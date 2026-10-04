@@ -4,7 +4,7 @@ from nlagg.parse_email import build_row, is_issue, detect_platform, parse_raw
 
 def row(cfg, raw, gid="abc123abc123"):
     return build_row(raw, gid, inbox_address=cfg.inbox_address, tag_to_segment=cfg.tag_to_segment,
-                     sender_overrides=cfg.sender_overrides)
+                     sender_overrides=cfg.sender_overrides, sender_fallbacks=cfg.sender_fallbacks)
 
 
 def test_tag_map_matches_category_feeds():
@@ -96,3 +96,41 @@ def test_routing_overrides_from_first_real_capture(cfg):
     assert r("pragmaticengineer+deepdives@substack.com", ["legal"]) == "1-TechAI"
     assert r("importai@substack.com", ["legal"]) == "1-TechAI"
     assert r("lawfare+today-on-lawfare@substack.com", ["techai"]) == "3-Legal"
+
+
+def test_fallbacks_route_plain_address_picks_only(cfg):
+    from nlagg.parse_email import route_segment
+    def r(name, sender, tags=()):
+        return route_segment(sender, list(tags), cfg.tag_to_segment, cfg.sender_overrides,
+                             cfg.sender_fallbacks, name)
+    # picks that also arrive at the plain address (no +tag)
+    assert r("TLDR", "dan@tldrnewsletter.com") == "1-TechAI"
+    assert r("Dru Riley @ Trends.vc", "d@trends.vc") == "6-IndieHacker"
+    assert r("The National Law Review - Jack Baudoin", "klappe@natlawreview.com") == "3-Legal"
+    assert r("The National Law Review", "publicnotices@natlawreview.com") == "3-Legal"
+    # one sending service, split by display name
+    assert r("HR Brew", "morningbrew@mail.sailthru.com") == "4-HRPeopleOps"
+    assert r("Morning Brew", "morningbrew@mail.sailthru.com") == "2-BizFinance"
+    assert r("Brew Markets", "morningbrew@mail.sailthru.com") == "2-BizFinance"
+    # a +tag always beats a fallback (TLDR Web Dev on +github stays in GitHub)
+    assert r("TLDR Web Dev", "dan@tldrnewsletter.com", ["github"]) == "5-GitHubRepos"
+    # newsletters we did not pick stay unmatched (owner decision 2026-10-04)
+    assert r("Axios Markets", "markets@axios.com") == "unmatched"
+    assert r("Bloomberg Businessweek", "noreply@news.bloomberg.com") == "unmatched"
+    assert r("Finimize", "finimize@mail.sailthru.com") == "unmatched"
+
+
+def test_sender_with_unquoted_at_in_display_name(cfg):
+    """Raw header exactly as some senders write it; parseaddr alone returns ('', '')."""
+    from nlagg.parse_email import parse_sender
+    assert parse_sender("Dru Riley @ Trends.vc <d@trends.vc>") == ("Dru Riley @ Trends.vc", "d@trends.vc")
+    assert parse_sender('"Dru Riley @ Trends.vc" <d@trends.vc>') == ("Dru Riley @ Trends.vc", "d@trends.vc")
+    assert parse_sender("TLDR <dan@tldrnewsletter.com>") == ("TLDR", "dan@tldrnewsletter.com")
+    assert parse_sender("plain@example.com") == ("", "plain@example.com")
+    raw = (b"From: Dru Riley @ Trends.vc <d@trends.vc>\r\nTo: notifyy1008@gmail.com\r\n"
+           b"Subject: You're in a Status Game\r\nDate: Mon, 05 Oct 2026 07:01:00 -0400\r\n"
+           b"Content-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n")
+    r = row(cfg, raw)
+    assert (r["sender_name"], r["sender_email"]) == ("Dru Riley @ Trends.vc", "d@trends.vc")
+    assert r["segment"] == "6-IndieHacker"                 # plain address -> fallback rule
+    assert r["source_key"].startswith("d@trends.vc|")

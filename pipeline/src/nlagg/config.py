@@ -23,6 +23,7 @@ class Config:
     ignore_senders: list[str]
     tag_to_segment: dict[str, str]                # "techai" -> "1-TechAI"
     sender_overrides: list[tuple[str, str]]       # (substring, segment), checked in order
+    sender_fallbacks: list[tuple[str, str]]       # used only when no +tag matched
     active_segments: list[str]
     llm: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
@@ -75,6 +76,7 @@ def load_config(path: Path | None = None, repo_root: Path | None = None) -> Conf
         ignore_senders=[s.lower() for s in inbox.get("ignore_senders", [])],
         tag_to_segment=load_tag_map(repo_root / p["category_feeds"]),
         sender_overrides=[(o["match"].lower(), o["segment"]) for o in seg.get("sender_overrides", [])],
+        sender_fallbacks=[(o["match"].lower(), o["segment"]) for o in seg.get("sender_fallbacks", [])],
         active_segments=list(seg.get("active", [])),
         llm=raw.get("llm", {}),
         raw=raw,

@@ -117,4 +117,5 @@ def test_migrates_v2_database(cfg):
     assert {"is_promo", "split_shape", "split_error"} <= cols
     assert {"kind", "word_count"} <= {r[1] for r in conn.execute("PRAGMA table_info(items)")}
     assert conn.execute("SELECT gmail_id FROM messages").fetchall()[0][0] == "old1"
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+    assert "duplicate_of" in cols

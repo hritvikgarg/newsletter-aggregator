@@ -5,7 +5,7 @@ import sqlite3
 from importlib import resources
 from pathlib import Path
 
-SCHEMA_VERSION = 3   # v1 = PHASE4_DESIGN.md original, v2 = items/stories/issues_out, v3 = M2 columns
+SCHEMA_VERSION = 4   # v1 original, v2 items/stories/issues_out, v3 M2 columns, v4 duplicate_of
 
 # Columns added after a table was first created: (table, column, type/default).
 # CREATE TABLE IF NOT EXISTS does not touch existing tables, so older DBs get them via ALTER.
@@ -15,6 +15,7 @@ ADDED_COLUMNS = [
     ("messages", "split_error", "TEXT"),
     ("items", "kind", "TEXT DEFAULT 'story'"),
     ("items", "word_count", "INTEGER"),
+    ("messages", "duplicate_of", "TEXT"),
 ]
 
 

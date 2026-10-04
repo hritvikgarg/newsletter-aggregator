@@ -1,6 +1,6 @@
 """Re-derive routing fields for mail that is already captured, from the stored .eml files.
 
-Use after changing routing rules (config.yaml sender_overrides, category_feeds.csv) or the
+Use after changing routing rules (config.yaml sender_overrides/fallbacks, category_feeds.csv) or the
 source_key / is_issue logic. Nothing is downloaded and no files move: .eml paths stay as they
 are; only the DB columns segment, source_key and is_issue are updated (and the same columns
 on already-split items).
@@ -19,6 +19,7 @@ class ReindexResult:
     scanned: int = 0
     changed: int = 0
     missing_file: int = 0
+    duplicates: int = 0
     moves: dict[str, int] = field(default_factory=dict)     # "old -> new" segment counts
 
 
@@ -36,7 +37,8 @@ def run_reindex(cfg: Config, dry_run: bool = False) -> ReindexResult:
                 res.missing_file += 1
                 continue
             new = build_row(path.read_bytes(), r["gmail_id"], inbox_address=cfg.inbox_address,
-                            tag_to_segment=cfg.tag_to_segment, sender_overrides=cfg.sender_overrides)
+                            tag_to_segment=cfg.tag_to_segment, sender_overrides=cfg.sender_overrides,
+                            sender_fallbacks=cfg.sender_fallbacks)
             if (new["segment"], new["source_key"], new["is_issue"]) == (r["segment"], r["source_key"], r["is_issue"]):
                 continue
             res.changed += 1
@@ -50,6 +52,9 @@ def run_reindex(cfg: Config, dry_run: bool = False) -> ReindexResult:
                              (new["segment"], new["source_key"], new["is_issue"], r["gmail_id"]))
                 conn.execute("UPDATE items SET segment = ?, source_key = ? WHERE gmail_id = ?",
                              (new["segment"], new["source_key"], r["gmail_id"]))
+        if not dry_run:
+            from .dedupe import mark_duplicates
+            res.duplicates = mark_duplicates(conn)    # routing changes can change which copy is canonical
     finally:
         conn.close()
     return res

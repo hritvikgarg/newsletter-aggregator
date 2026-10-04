@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS messages (
   enrich_status    TEXT DEFAULT 'pending',
   is_promo         INTEGER DEFAULT 0,        -- v3: sale/upgrade/webinar mail (set by M2)
   split_shape      TEXT,                     -- v3: roundup | essay | teaser | empty
-  split_error      TEXT                      -- v3
+  split_error      TEXT,                     -- v3
+  duplicate_of     TEXT                      -- v4: gmail_id of the canonical copy of the same issue
 );
 
 CREATE TABLE IF NOT EXISTS sync_log (

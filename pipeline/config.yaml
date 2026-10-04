@@ -42,6 +42,21 @@ segments:
       segment: 1-TechAI
     - match: importai
       segment: 1-TechAI
+  # 3) sender_fallbacks apply ONLY when no +tag matched (mail sent to the plain address).
+  #    Matched as a substring of "display name <address>", lowercased. First match wins.
+  #    From the first real capture (2026-10-04): these picks also arrive at the plain address.
+  #    Newsletters we did NOT pick (Bloomberg, Axios Markets, Snacks, ...) stay 'unmatched' on purpose.
+  sender_fallbacks:
+    - match: tldrnewsletter.com
+      segment: 1-TechAI
+    - match: trends.vc
+      segment: 6-IndieHacker
+    - match: natlawreview.com
+      segment: 3-Legal
+    - match: "hr brew <"              # HR Brew sent via mail.sailthru.com
+      segment: 4-HRPeopleOps
+    - match: morningbrew@mail.sailthru.com
+      segment: 2-BizFinance
   # Which segments the downstream stages (split/enrich/compose) run on. Capture always takes everything.
   active: [1-TechAI]
 
