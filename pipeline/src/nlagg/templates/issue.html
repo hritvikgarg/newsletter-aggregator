@@ -3,32 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>$subject</title>
+<style>
+  @media (max-width: 620px) {
+    .px { padding-left: 20px !important; padding-right: 20px !important; }
+    .h1 { font-size: 26px !important; }
+    .h2 { font-size: 22px !important; }
+  }
+  a { color: #2747E8; }
+</style>
 </head>
-<body style="margin:0;padding:0;background:#f4f1ea;">
-<div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:Georgia,'Times New Roman',serif;color:#1f1d1a;line-height:1.55;font-size:16px;">
-  <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7a6f5d;">$title · $date_label</div>
-  <h1 style="font-size:26px;line-height:1.2;margin:8px 0 16px;">$subject</h1>
-  <p style="font-size:18px;margin:0 0 24px;">$hook</p>
+<body style="margin:0;padding:0;background:#E9EDF2;">
+<!-- preheader: the line inbox previews show next to the subject -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">$preheader</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E9EDF2;">
+<tr><td align="center" style="padding:28px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="max-width:600px;background:#FFFFFF;border-top:4px solid #0F1B2D;">
 
-  <div style="background:#ffffff;border:1px solid #e3ddd0;border-radius:8px;padding:18px 20px;margin:0 0 24px;">
-    <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b4472c;">Top story</div>
-    <h2 style="font-size:21px;line-height:1.25;margin:6px 0 10px;">$top_headline</h2>
+  <!-- masthead -->
+  <tr><td class="px" style="padding:22px 36px 18px;border-bottom:1px solid #DDE3EA;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:-0.02em;color:#0F1B2D;">
+        <span style="display:inline-block;width:10px;height:10px;background:#2747E8;margin-right:8px;vertical-align:1px;"></span>$wordmark
+      </td>
+      <td align="right" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:#667085;">$date_label</td>
+    </tr></table>
+  </td></tr>
+
+  <!-- lead -->
+  <tr><td class="px" style="padding:32px 36px 8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+    <h1 class="h1" style="margin:0 0 14px;font-size:32px;line-height:1.12;font-weight:800;letter-spacing:-0.025em;color:#0F1B2D;">$subject</h1>
+    <p style="margin:0;font-size:19px;line-height:1.5;color:#2B3445;">$hook</p>
+  </td></tr>
+
+  <!-- top story -->
+  <tr><td class="px" style="padding:28px 36px 4px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+    <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#2747E8;">Today's big story</p>
+    <h2 class="h2" style="margin:0 0 14px;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0F1B2D;">$top_headline</h2>
     $top_paragraphs
-    <p style="margin:12px 0 0;padding:10px 12px;background:#faf6ec;border-left:3px solid #b4472c;"><strong>Why it matters:</strong> $why</p>
-    $agree_block
-  </div>
+    $why_block
+  </td></tr>
 
   $talking_block
   $quick_block
   $skip_block
 
-  <p style="margin:28px 0 8px;">$close</p>
-  <hr style="border:none;border-top:1px solid #e3ddd0;margin:24px 0 12px;">
-  <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7a6f5d;margin:0;">
-    Built from $n_sources newsletters ($source_names). Every fact links to the newsletter that reported it.
-    Summaries are ours; read the originals for the full story.
-  </p>
-</div>
+  <!-- sign-off -->
+  <tr><td class="px" style="padding:28px 36px 32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#2B3445;">
+    $close
+  </td></tr>
+</table>
+
+<!-- footer -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+  <tr><td class="px" style="padding:18px 36px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#667085;">
+    $footer
+  </td></tr>
+</table>
+</td></tr>
+</table>
 </body>
 </html>

@@ -78,6 +78,10 @@ compose:
     1-TechAI: "Tech & AI, Distilled"
   labels:
     1-TechAI: "tech and AI"
+  # The issue never names the newsletters it reads (owner decision 2026-10-05). Links:
+  #   original = "Read more" goes to the original article (company post, paper, news site) — never a newsletter page
+  #   none     = no links at all
+  links: original
 
 # M6: delivery after `nlagg approve`. Sent from NLAGG_IMAP_USER with the same App Password (SMTP).
 # Empty recipients = approve only writes/keeps the HTML file, nothing is emailed.

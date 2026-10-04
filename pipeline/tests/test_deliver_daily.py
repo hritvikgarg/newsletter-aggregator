@@ -57,7 +57,7 @@ def test_approve_sends_html_email_bcc(draft):
     m = FakeSMTP.sent[0]
     assert m["Subject"] == "Meta puts Muse on your face" and m["Bcc"] == "a@example.com, b@example.com"
     assert m.get_body(("html",)).get_content().lstrip().startswith("<!doctype html>")
-    assert "TLDR <https://news.example/0>" in m.get_body(("plain",)).get_content()
+    assert "Read more <https://news.example/0>" in m.get_body(("plain",)).get_content()
     assert approve(draft, smtp_factory=FakeSMTP).status == "missing"                        # no draft left
     assert approve(draft, issue_date="2026-10-02", smtp_factory=FakeSMTP).status == "sent"
     assert len(FakeSMTP.sent) == 1                                                         # never sent twice
@@ -107,7 +107,7 @@ def test_daily_run_end_to_end(cfg, tmp_path, monkeypatch):
         user = messages[1]["content"]
         import re
         ids = re.findall(r"\[i(\d+)\]", user)
-        return {"subject": "Meta's glasses day", "hook": f"Two newsletters led with Meta's VR glasses [i{ids[0]}][i{ids[1]}].",
+        return {"subject": "Meta's glasses day", "hook": f"Meta's VR glasses led the day [i{ids[0]}][i{ids[1]}].",
                 "top_story": {"headline": "Meta shows VR glasses", "paragraphs": [f"Meta showed VR glasses for $1,299 [i{ids[0]}]."],
                               "why_it_matters": f"Muse moves onto your face [i{ids[1]}]."},
                 "talking_about": [], "quick_hits": [], "safe_to_skip": [], "close": "Bye for now."}

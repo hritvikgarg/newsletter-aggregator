@@ -39,10 +39,10 @@ def compose_reply(ids, bad=True):
     w = ids["Waymo is scaling fast in Phoenix"]
     body = {
         "subject": "Meta puts Muse on your face",
-        "hook": f"Three newsletters led with Meta's Connect event [i{t}][i{s}][i{n}].",
+        "hook": f"Meta's Connect event was the story of the day [i{t}][i{s}][i{n}].",
         "top_story": {"headline": "Meta shows VR glasses and a Muse device",
                       "paragraphs": [f"Meta unveiled lightweight VR glasses priced at $1,299 [i{t}].",
-                                     f"Only The Neuron says they ship next month [i{n}]."
+                                     f"One report says they ship next month [i{n}]."
                                      + (f" Apple is expected to answer with $999 glasses [i{t}]." if bad else "")],
                       "why_it_matters": f"Glasses may become the main way people use Muse [i{n}]."
                                         + (" Analysts expect 10 million sales." if bad else "")},
@@ -66,9 +66,11 @@ def test_compose_validates_retries_and_writes(cfg, tmp_path, monkeypatch):
     assert "Apple" in reasons and "no citation" in reasons and "unknown item" in reasons
     md = r.md_path.read_text(encoding="utf-8")
     assert "Apple" not in md and "Gemini 5" not in md and "$1,299" in md
-    assert "(TLDR)" in md.replace("[TLDR](https://news.example/0)", "(TLDR)") or "[TLDR](" in md
+    assert "[Read more](https://news.example/0)" in md and "[i" not in md
     html = r.html_path.read_text(encoding="utf-8")
-    assert "<a href=" in html and "Meta puts Muse on your face" in html and "$" not in html.split("<title>")[0][:0]
+    assert "Read more</a>" in html and "Meta puts Muse on your face" in html
+    for name in ("TLDR", "Superhuman", "The Neuron", "newsletter", "[i"):        # reads as our own publication
+        assert name not in html.split("<body")[1] and name not in md
     conn = db.connect(cfg.db_path)
     row = conn.execute("SELECT * FROM issues_out").fetchone()
     rep = json.loads(row["validator_report"])
@@ -83,7 +85,8 @@ def test_compose_clean_reply_has_no_problems_and_no_retry(cfg, tmp_path, monkeyp
     r = run_compose(cfg, issue_date="2026-10-02", client=fake, resolve_links=False)
     assert r.dropped == [] and not r.retried and len(fake.calls) == 1
     roles = fake.calls[0][1][1]["content"]
-    assert "TOP" in roles and "covered by 3 newsletter(s)" in roles
+    assert "TOP" in roles and "widely covered today" in roles
+    assert "TLDR" not in roles and "Superhuman" not in roles           # the writer never sees newsletter names
 
 
 def test_items_cited_yesterday_are_not_reused(cfg, tmp_path, monkeypatch):
@@ -117,13 +120,24 @@ def test_approved_issue_is_not_overwritten(cfg, tmp_path, monkeypatch):
 def test_checker_rules():
     c = Checker({1: "OpenAI raised $40 billion from SoftBank, Sam Altman said on Monday."}, {"TLDR"})
     assert c.check("OpenAI raised $40 billion [i1].") is None
-    assert c.check("TLDR says OpenAI raised $40 billion [i1].") is None              # newsletter names are fine
+    assert "names the newsletter" in c.check("TLDR says OpenAI raised $40 billion [i1].")
+    assert c.check("The newsletter says OpenAI raised money [i1].") == "mentions newsletters"
     assert "number" in c.check("OpenAI raised $50 billion [i1].")
     assert "name" in c.check("OpenAI and Microsoft raised money [i1].")
     assert c.check("OpenAI raised money.") == "no citation"
     assert "copies" in c.check("OpenAI raised $40 billion from SoftBank, Sam Altman said on Monday [i1].")
-    assert c.check("Two newsletters covered it and OpenAI raised money [i1].") is None   # source counts are ok
+    assert c.check("Two reports put it differently and OpenAI raised money [i1].") is None
 
 
 def test_sentence_split_keeps_dangling_ids():
     assert sentences("A thing happened. [i1] Then another [i2].") == ["A thing happened. [i1]", "Then another [i2]."]
+
+
+def test_links_go_to_original_articles_only():
+    from nlagg.compose import Linker, is_newsletter_url
+    assert is_newsletter_url("https://archive.superhuman.ai/123") and is_newsletter_url("https://link.mail.beehiiv.com/x")
+    assert is_newsletter_url("https://pragmaticengineer.substack.com/p/x")
+    assert not is_newsletter_url("https://apnews.com/article/spacex") and not is_newsletter_url("https://www.anthropic.com/research/x")
+    lk = Linker({1: "https://apnews.com/a", 2: "https://apnews.com/a", 3: ""})
+    assert lk.for_text("x [i1]") == "https://apnews.com/a" and lk.for_text("y [i2]") == ""   # same link once
+    assert Linker({1: "https://apnews.com/a"}, "none").for_text("x [i1]") == ""

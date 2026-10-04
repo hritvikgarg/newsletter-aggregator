@@ -31,7 +31,7 @@ log = logging.getLogger("nlagg.compose")
 
 CITE_RE = re.compile(r"\[i(\d+)\]")
 NUM_RE = re.compile(r"\d+(?:[.,]\d+)*")
-SOURCE_COUNT_RE = re.compile(r"\b(\d+|two|three|four|five|six)\s+(newsletters?|sources?|of them|outlets?)\b", re.I)
+SOURCE_COUNT_RE = re.compile(r"\b(\d+|two|three|four|five|six)\s+(reports?|sources?|of them|outlets?)\b", re.I)
 COPY_NGRAM = 11
 MAX_TALKING, MAX_QUICK, MAX_SKIP = 3, 6, 2
 # Words that may appear capitalised without being a name from the source
@@ -144,16 +144,18 @@ def assign_roles(stories: list[StoryIn]) -> list[StoryIn]:
 
 
 def story_block(s: StoryIn) -> str:
-    lines = [f"### STORY {s.id} — {s.role} — covered by {s.source_count} newsletter(s)"]
-    for it in s.items:
+    """Research notes for the writer. Newsletter names are left out on purpose: the issue must not name them."""
+    n = len(s.items)
+    lines = [f"### STORY {s.id} — {s.role} — " + ("widely covered today" if s.source_count >= 2 else "single report")]
+    for k, it in enumerate(s.items, 1):
         body = it["summary"] or " ".join(it["text"].split()[:120])
-        lines.append(f"[i{it['id']}] {it['newsletter']}: {it['title']}\n    {body}")
+        lines.append(f"[i{it['id']}] note {k}/{n}: {it['title']}\n    {body}")
         if it["stats"]:
             lines.append("    numbers: " + "; ".join(it["stats"][:4]))
     for p in s.consensus:
-        lines.append(f"    sources agree: {p['text']} " + "".join(f"[i{i}]" for i in p["items"]))
+        lines.append(f"    notes agree: {p['text']} " + "".join(f"[i{i}]" for i in p["items"]))
     for p in s.divergence:
-        lines.append(f"    sources differ: {p['text']} " + "".join(f"[i{i}]" for i in p["items"]))
+        lines.append(f"    notes differ: {p['text']} " + "".join(f"[i{i}]" for i in p["items"]))
     return "\n".join(lines)
 
 
@@ -190,7 +192,7 @@ class Checker:
     def __post_init__(self):
         self.norm_texts = {k: norm(v) for k, v in self.texts.items()}
         self.grams = {k: _ngrams(re.findall(r"[a-z0-9$%']+", v), COPY_NGRAM) for k, v in self.norm_texts.items()}
-        self.nl_words = {w for n in self.newsletters for w in re.findall(r"[a-z0-9]+", norm(n))}
+        self.nl_names = [n for n in self.newsletters if n and len(n) >= 3]
 
     def check(self, sentence: str, *, need_cite: bool = True, scope: list[int] | None = None) -> str | None:
         """None if the sentence is fine, else the reason it fails."""
@@ -203,6 +205,11 @@ class Checker:
             return f"cites unknown item(s) {unknown}"
         if need_cite and not cites:
             return "no citation"
+        for n in self.nl_names:                     # our issue never names the newsletters it reads
+            if re.search(rf"(?<![\w]){re.escape(n)}(?![\w])", bare):
+                return f"names the newsletter '{n}'"
+        if re.search(r"\bnewsletters?\b", bare, re.I):
+            return "mentions newsletters"
         ids = cites or scope or list(self.texts)
         src = " ".join(self.norm_texts[i] for i in ids)
         check_nums = SOURCE_COUNT_RE.sub(" ", bare)
@@ -215,7 +222,7 @@ class Checker:
                 continue
             lw = norm(w).strip(".'’-")
             lw = re.sub(r"['’]s$", "", lw)
-            if lw in ALLOW or lw in self.nl_words or not lw:
+            if lw in ALLOW or not lw:
                 continue
             if lw not in src:
                 return f"name '{w}' not in the cited source"
@@ -302,74 +309,118 @@ def cited_items(issue: dict) -> list[int]:
 
 
 # ---------------------------------------------------------------- rendering
-def _cite_links(text: str, refs: dict[int, tuple[str, str]], fmt: str) -> str:
-    """Replace each sentence's trailing [iN] ids with source links: '(TLDR, The Neuron)'."""
-    def repl(m: re.Match) -> str:
-        ids = [int(x) for x in CITE_RE.findall(m.group(0))]
-        seen, parts = set(), []
-        for i in ids:
-            name, url = refs.get(i, ("source", ""))
-            if (name, url) in seen:
-                continue
-            seen.add((name, url))
-            if fmt == "html":
-                parts.append(f'<a href="{htmlmod.escape(url)}" style="color:#b4472c;">{htmlmod.escape(name)}</a>'
-                             if url else htmlmod.escape(name))
-            else:
-                parts.append(f"[{name}]({url})" if url else name)
-        sep = ", "
-        return f" ({sep.join(parts)})"
-    text = re.sub(r"\s*((?:\[i\d+\]\s*)+)", repl, text)
-    return re.sub(r"\s+([.!?,])", r"\1", text).strip()
+# Our issue reads as our own publication: the [iN] ids never appear and no newsletter is named. In "original"
+# link mode a paragraph links to the ORIGINAL article it is about (the company post, the paper, the news site) —
+# never to a newsletter's own pages or click-trackers.
+NEWSLETTER_DOMAINS = ("superhuman.ai", "joinsuperhuman.ai", "tldr.tech", "tldrnewsletter.com", "theneurondaily.com",
+                      "theneuron.ai", "substack.com", "beehiiv.com", "pragmaticengineer.com", "importai.net",
+                      "jack-clark.net", "morningbrew.com", "sailthru.com", "list-manage.com", "kit.com",
+                      "convertkit.com", "mailchimp.com")
 
 
-def render_md(issue: dict, refs, title: str, date_label: str) -> str:
-    c = lambda t: _cite_links(t, refs, "md")                # noqa: E731
-    out = [f"# {issue['subject']}", f"*{title} · {date_label}*", "", c(issue["hook"]), "",
-           f"## Top story: {issue['top_story']['headline']}"]
+def is_newsletter_url(url: str, extra: tuple[str, ...] = ()) -> bool:
+    from .clean import domain_of, link_type
+    if not url or link_type(url) != "source":
+        return True                                    # trackers, mailto, social chrome
+    d = domain_of(url)
+    return any(d == x or d.endswith("." + x) for x in NEWSLETTER_DOMAINS + tuple(extra))
+
+
+def plain(text: str) -> str:
+    t = CITE_RE.sub("", text or "")
+    t = re.sub(r"\s+([.!?,;:])", r"\1", t)
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
+@dataclass
+class Linker:
+    urls: dict[int, str]               # item id -> best URL (original article) or ""
+    mode: str = "original"             # original | none
+    used: set = field(default_factory=set)
+
+    def for_text(self, text: str) -> str:
+        """URL of the first cited item with an original-article link not used yet ('' if none / mode none)."""
+        if self.mode != "original":
+            return ""
+        for i in CITE_RE.findall(text or ""):
+            u = self.urls.get(int(i), "")
+            if u and u not in self.used:
+                self.used.add(u)
+                return u
+        return ""
+
+
+FONT = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
+
+
+def _p(text: str, link: str, style: str) -> str:
+    more = (f' <a href="{htmlmod.escape(link)}" style="color:#2747E8;text-decoration:none;font-weight:600;'
+            f'white-space:nowrap;">Read more</a>') if link else ""
+    return f'<p style="{style}">{htmlmod.escape(plain(text))}{more}</p>'
+
+
+def render_md(issue: dict, linker: Linker, title: str, date_label: str) -> str:
+    def c(t: str) -> str:
+        u = linker.for_text(t)
+        return plain(t) + (f" [Read more]({u})" if u else "")
+    out = [f"**{title}** — {date_label}", "", f"# {issue['subject']}", "", plain(issue["hook"]), "",
+           "## Today's big story", f"### {issue['top_story']['headline']}"]
     out += [c(p) + "\n" for p in issue["top_story"]["paragraphs"]]
     if issue["top_story"]["why_it_matters"]:
         out.append(f"**Why it matters:** {c(issue['top_story']['why_it_matters'])}\n")
     if issue["talking_about"]:
         out.append("## Everyone's talking about")
-        for x in issue["talking_about"]:
-            out.append(f"**{x['headline']}** — {c(x['text'])}\n" if x["headline"] else c(x["text"]) + "\n")
+        out += [(f"**{x['headline']}** " if x["headline"] else "") + c(x["text"]) + "\n" for x in issue["talking_about"]]
     if issue["quick_hits"]:
         out.append("## Quick hits")
-        out += [f"- {c(x['text'])}" for x in issue["quick_hits"]]
-        out.append("")
+        out += [f"- {c(x['text'])}" for x in issue["quick_hits"]] + [""]
     if issue["safe_to_skip"]:
         out.append("## Safe to skip")
-        out += [f"- {c(x['text'])}" for x in issue["safe_to_skip"]]
-        out.append("")
+        out += [f"- {c(x['text'])}" for x in issue["safe_to_skip"]] + [""]
     out.append(issue["close"])
     return "\n".join(out).strip() + "\n"
 
 
-def render_html(issue: dict, refs, title: str, date_label: str, source_names: list[str]) -> str:
-    def c(t: str) -> str:
-        return _cite_links(htmlmod.escape(t).replace("&#x27;", "'"), refs, "html")
+def render_html(issue: dict, linker: Linker, title: str, date_label: str, footer: str) -> str:
+    body = f"{FONT}margin:0 0 14px;font-size:16px;line-height:1.6;color:#2B3445;"
 
-    def section(label: str, inner: str) -> str:
-        return ('<div style="margin:0 0 24px;"><div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;'
-                'letter-spacing:.08em;text-transform:uppercase;color:#b4472c;margin:0 0 8px;">'
-                f'{label}</div>{inner}</div>')
+    def section(heading: str, inner: str, bg: str = "#FFFFFF") -> str:
+        return (f'<tr><td class="px" style="padding:26px 36px 6px;background:{bg};{FONT}">'
+                f'<h3 style="margin:0 0 14px;padding-top:22px;border-top:1px solid #DDE3EA;font-size:18px;'
+                f'line-height:1.3;font-weight:800;letter-spacing:-0.01em;color:#0F1B2D;">{heading}</h3>{inner}</td></tr>')
 
+    top = issue["top_story"]
+    why = top["why_it_matters"]
+    why_block = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+                 f'style="margin:6px 0 10px;"><tr><td style="border-left:3px solid #2747E8;padding:4px 0 4px 16px;'
+                 f'{FONT}font-size:16px;line-height:1.6;color:#0F1B2D;"><strong>Why it matters.</strong> '
+                 f'{htmlmod.escape(plain(why))}</td></tr></table>') if why else ""
     talking = "".join(
-        f'<p style="margin:0 0 12px;"><strong>{htmlmod.escape(x["headline"])}</strong> — {c(x["text"])}</p>'
-        if x["headline"] else f'<p style="margin:0 0 12px;">{c(x["text"])}</p>' for x in issue["talking_about"])
-    li = lambda xs: "<ul style=\"margin:0;padding-left:20px;\">" + "".join(        # noqa: E731
-        f'<li style="margin:0 0 8px;">{c(x["text"])}</li>' for x in xs) + "</ul>"
-    return Template(resources.files("nlagg").joinpath("templates/issue.html").read_text(encoding="utf-8")).substitute(
-        subject=htmlmod.escape(issue["subject"]), title=htmlmod.escape(title), date_label=htmlmod.escape(date_label),
-        hook=c(issue["hook"]), top_headline=htmlmod.escape(issue["top_story"]["headline"]),
-        top_paragraphs="".join(f'<p style="margin:0 0 10px;">{c(p)}</p>' for p in issue["top_story"]["paragraphs"]),
-        why=c(issue["top_story"]["why_it_matters"]) or "—", agree_block="",
+        f'<p style="{FONT}margin:0 0 4px;font-size:17px;font-weight:700;color:#0F1B2D;">{htmlmod.escape(x["headline"])}</p>'
+        + _p(x["text"], linker.for_text(x["text"]), body) for x in issue["talking_about"])
+
+    def bullets(xs, color="#2B3445", size="16px") -> str:
+        rows = "".join(
+            f'<tr><td valign="top" style="width:18px;padding:9px 0 0;"><span style="display:block;width:7px;height:7px;'
+            f'background:#2747E8;"></span></td><td style="{FONT}padding:0 0 12px;font-size:{size};line-height:1.6;'
+            f'color:{color};">{htmlmod.escape(plain(x["text"]))}'
+            + ((lambda u: f' <a href="{htmlmod.escape(u)}" style="color:#2747E8;text-decoration:none;font-weight:600;'
+                          f'white-space:nowrap;">Read more</a>' if u else "")(linker.for_text(x["text"])))
+            + '</td></tr>' for x in xs)
+        return f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{rows}</table>'
+
+    tpl = Template(resources.files("nlagg").joinpath("templates/issue.html").read_text(encoding="utf-8"))
+    return tpl.substitute(
+        subject=htmlmod.escape(issue["subject"]), preheader=htmlmod.escape(plain(issue["hook"]))[:180],
+        wordmark=htmlmod.escape(title), date_label=htmlmod.escape(date_label),
+        hook=htmlmod.escape(plain(issue["hook"])), top_headline=htmlmod.escape(top["headline"]),
+        top_paragraphs="".join(_p(p, linker.for_text(p), body) for p in top["paragraphs"]),
+        why_block=why_block,
         talking_block=section("Everyone's talking about", talking) if talking else "",
-        quick_block=section("Quick hits", li(issue["quick_hits"])) if issue["quick_hits"] else "",
-        skip_block=section("Safe to skip", li(issue["safe_to_skip"])) if issue["safe_to_skip"] else "",
-        close=htmlmod.escape(issue["close"]), n_sources=len(source_names),
-        source_names=htmlmod.escape(", ".join(source_names)))
+        quick_block=section("Quick hits", bullets(issue["quick_hits"])) if issue["quick_hits"] else "",
+        skip_block=section("Safe to skip", bullets(issue["safe_to_skip"], "#667085", "15px"))
+        if issue["safe_to_skip"] else "",
+        close=htmlmod.escape(issue["close"]), footer=htmlmod.escape(footer))
 
 
 # ---------------------------------------------------------------- orchestration
@@ -414,20 +465,25 @@ def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | No
             log.warning("compose retry failed: %s", e)
     res.dropped = problems
     cited = cited_items(issue)
-    from .links import resolve_for_items
-    urls = resolve_for_items(conn, cited, **({"fetch": fetch} if fetch else {})) if resolve_links else {}
-    names = {i["id"]: i["newsletter"] for s in picked for i in s.items}
-    if not resolve_links:
-        urls = {r["id"]: r["url"] for r in conn.execute(
-            f"SELECT id, url FROM items WHERE id IN ({','.join('?' * len(cited)) or 'NULL'})", cited)}
-    refs = {i: (names.get(i, "source"), urls.get(i, "")) for i in cited}
-    source_names = sorted({names[i] for i in cited if i in names})
-    date_label = date.fromisoformat(issue_date).strftime("%a %d %b %Y")
+    links_mode = str(comp.get("links", "original")).lower()
+    urls: dict[int, str] = {}
+    if links_mode == "original" and cited:
+        if resolve_links:
+            from .links import resolve_for_items
+            urls = resolve_for_items(conn, cited, **({"fetch": fetch} if fetch else {}))
+        else:
+            urls = {r["id"]: r["url"] for r in conn.execute(
+                f"SELECT id, url FROM items WHERE id IN ({','.join('?' * len(cited))})", cited)}
+        urls = {i: u for i, u in urls.items() if u and not is_newsletter_url(u)}
+    linker_md, linker_html = Linker(urls, links_mode), Linker(urls, links_mode)
+    footer = comp.get("footer", {}).get(segment) if isinstance(comp.get("footer"), dict) else comp.get("footer")
+    footer = footer or f"{title} is a daily briefing on {label}. Reply to this email to send feedback or to unsubscribe."
+    date_label = date.fromisoformat(issue_date).strftime("%A, %d %B %Y").replace(" 0", " ")
     out_dir = cfg.repo_root / "pipeline" / "out" / "issues" / segment
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path, html_path = out_dir / f"{issue_date}.md", out_dir / f"{issue_date}.html"
-    md_path.write_text(render_md(issue, refs, title, date_label), encoding="utf-8")
-    html_path.write_text(render_html(issue, refs, title, date_label, source_names), encoding="utf-8")
+    md_path.write_text(render_md(issue, linker_md, title, date_label), encoding="utf-8")
+    html_path.write_text(render_html(issue, linker_html, title, date_label, footer), encoding="utf-8")
     report = {"problems_dropped": problems, "retried": res.retried, "cited_items": cited,
               "roles": {s.id: s.role for s in picked}, "subject": issue["subject"]}
     with conn:

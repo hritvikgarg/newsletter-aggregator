@@ -253,6 +253,17 @@ This file is the durable memory across sessions and for the team. To keep it fre
 
 ## 14. SESSION LOG (append newest at top)
 
+### Session 2026-10-05 (c) — Our issue reads as our own publication (hritvik)
+- **Decided (hritvik):** the issue must not reference the newsletters it reads — no names, no "N newsletters",
+  no "(Superhuman)" links. Implemented: the writer never sees newsletter names (notes are "note 1/3"); the checker
+  rejects any sentence naming a newsletter or saying "newsletter"; ids are stripped on render. Every sentence is still
+  traced to an item internally (checker unchanged), so accuracy checks stay.
+- Claude's advice (recorded): keep "Read more" links to the ORIGINAL article (company post, paper, news site — never a
+  newsletter page or tracker); config `compose.links: original | none`, default original. Facts are free to reuse, but
+  a newsletter's own analysis/exclusives republished without credit is the risky part; summaries stay in our words
+  (11-word copy check).
+- New email design (white page on cool grey, navy ink, one blue accent, system sans; mobile-tested).
+
 ### Session 2026-10-05 (b) — M3–M7 built, pushed straight to main (hritvik)
 - **Decided (hritvik):** owner's sessions push directly to `main` during the build (tests first; CLAUDE.md updated).
   LLM = **Groq** free key (owner adds `GROQ_API_KEY` to `pipeline/.env`); clustering = **TF-IDF + name overlap**
