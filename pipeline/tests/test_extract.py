@@ -64,7 +64,7 @@ def test_run_extract_saves_and_skips(cfg):
     assert "Newsletter: TLDR" in fake.calls[0][1][1]["content"]
     conn = db.connect(cfg.db_path)
     e = conn.execute("SELECT * FROM item_enrichment WHERE item_id = ?", (ids["g"],)).fetchone()
-    assert e["summary"].startswith("Google announced") and e["error"] is None and e["llm_model"] == "llama-3.1-8b-instant"
+    assert e["summary"].startswith("Google announced") and e["error"] is None and e["llm_model"] == "openai/gpt-oss-20b"
     assert {r[0] for r in conn.execute("SELECT name FROM entities WHERE item_id=?", (ids["g"],))} == {"Google", "Gemini 4 Argon"}
     assert conn.execute("SELECT COUNT(*) FROM stats WHERE item_id=?", (ids["g"],)).fetchone()[0] == 1
     conn.close()
@@ -123,3 +123,35 @@ def test_claude_is_refused():
         LLMSettings.from_config({"extract_model": "claude-3-haiku"})
     with pytest.raises(SystemExit):
         LLMSettings.from_config({"base_url": "https://api.anthropic.com/v1"})
+
+
+def test_unknown_model_stops_early_with_hint(cfg):
+    from datetime import datetime
+    seed_items(cfg, [{"key": f"g{i}", "sender": "TLDR", "gmail_id": f"m{i}", "title": "Gemini", "body": BODY,
+                      "sent": "2026-10-04T10:00:00+00:00"} for i in range(5)])
+    calls = []
+
+    def transport(body):
+        calls.append(body)
+        return 404, {}, '{"error":{"message":"The model does not exist","code":"model_not_found"}}'
+
+    client = ChatClient(_settings(), None, transport=transport, sleep=lambda s: None)
+    r = run_extract(cfg, client=client, now=datetime.fromisoformat(NOW))
+    assert r.failed == 1 and len(calls) == 1 and "nlagg models" in r.errors[0]
+
+
+def test_reasoning_models_get_low_effort_and_room(cfg):
+    sent = []
+    ok = (200, {}, json.dumps({"choices": [{"message": {"content": '{"a": 1}'}}]}))
+    c = ChatClient(_settings(), None, transport=lambda b: (sent.append(b), ok)[1], sleep=lambda s: None)
+    c.chat_json("openai/gpt-oss-20b", [{"role": "user", "content": "x"}], max_tokens=900)
+    assert sent[0]["reasoning_effort"] == "low" and sent[0]["max_tokens"] == 2900
+
+
+def test_json_mode_rejected_falls_back(cfg):
+    seq = [(400, {}, '{"error":{"message":"response_format json_object is not supported"}}'),
+           (200, {}, json.dumps({"choices": [{"message": {"content": '{"a": 2}'}}]}))]
+    sent = []
+    c = ChatClient(_settings(), None, transport=lambda b: (sent.append(dict(b)), seq.pop(0))[1], sleep=lambda s: None)
+    assert c.chat_json("m", [{"role": "user", "content": "x"}]) == {"a": 2}
+    assert "response_format" in sent[0] and "response_format" not in sent[1]

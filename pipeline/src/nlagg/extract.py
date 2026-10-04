@@ -258,8 +258,8 @@ def run_extract(cfg: Config, *, days: float | None = 3, segments: list[str] | No
                                                                extracted_at, error) VALUES (?,?,?,?,?,?)""",
                     (row["id"], st.provider, st.extract_model, st.prompt_version,
                      datetime.now(timezone.utc).isoformat(timespec="seconds"), str(e)[:500]))
-            if "API error 401" in str(e) or "API error 403" in str(e):
-                break                                          # bad key: stop instead of failing every item
+            if any(f"API error {c}" in str(e) for c in (401, 403, 404)):
+                break                    # bad key / unknown model: every item would fail the same way
     res.api_calls, res.cache_hits, res.tokens = client.calls, client.cache_hits, client.tokens
     conn.close()
     return res

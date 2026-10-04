@@ -46,8 +46,8 @@ class LLMSettings:
         env = llm.get("api_key_env", "GROQ_API_KEY")
         s = cls(base_url=llm.get("base_url", "https://api.groq.com/openai/v1").rstrip("/"),
                 api_key=os.environ.get(env) or None,
-                extract_model=llm.get("extract_model", "llama-3.1-8b-instant"),
-                write_model=llm.get("write_model", "llama-3.3-70b-versatile"),
+                extract_model=llm.get("extract_model", "openai/gpt-oss-20b"),
+                write_model=llm.get("write_model", "openai/gpt-oss-120b"),
                 prompt_version=str(llm.get("prompt_version", "v1")),
                 max_retries=int(llm.get("max_retries", 3)),
                 min_interval_s=float(llm.get("min_interval_s", 2.5)),
@@ -56,6 +56,10 @@ class LLMSettings:
             if FORBIDDEN.search(v):
                 raise SystemExit(f"config llm: '{v}' — Claude/Anthropic is not allowed in the pipeline (team rule)")
         return s
+
+
+def is_reasoning_model(model: str) -> bool:
+    return bool(re.search(r"gpt-oss|qwen3|deepseek-r1|reason", model or "", re.I))
 
 
 def parse_json(text: str) -> dict:
@@ -102,7 +106,20 @@ class ChatClient:
                 return json.loads(row[0])
         body = {"model": model, "messages": messages, "temperature": temperature,
                 "max_tokens": max_tokens, "response_format": {"type": "json_object"}}
-        reply = self._call(body)
+        if is_reasoning_model(model):
+            # gpt-oss / qwen3 "think" before answering and the thinking counts against max_tokens:
+            # keep it short and leave room for the JSON.
+            body["reasoning_effort"] = "low"
+            body["max_tokens"] = max_tokens + 2000
+        try:
+            reply = self._call(body)
+        except LLMError as e:
+            if "API error 400" not in str(e) or not re.search(r"response_format|json|reasoning_effort", str(e), re.I):
+                raise
+            # some models reject JSON mode / reasoning_effort: ask again without them (the prompt asks for JSON)
+            body.pop("response_format", None)
+            body.pop("reasoning_effort", None)
+            reply = self._call(body)
         data = parse_json(reply)
         if self.conn is not None:
             self.conn.execute(
@@ -139,7 +156,10 @@ class ChatClient:
                 except (KeyError, IndexError, json.JSONDecodeError) as e:
                     raise LLMError(f"unexpected API reply: {payload[:300]}") from e
             if status in (400, 401, 403, 404):
-                raise LLMError(f"API error {status}: {payload[:300]}")
+                hint = ""
+                if "model_not_found" in payload or "does not exist" in payload:
+                    hint = " — run `python -m nlagg models` and set llm.extract_model / write_model in config.yaml"
+                raise LLMError(f"API error {status}: {payload[:300]}{hint}")
             if status:
                 last_err = LLMError(f"API error {status}: {payload[:200]}")
             if attempt < self.s.max_retries:
@@ -151,6 +171,19 @@ class ChatClient:
                 log.warning("LLM call failed (%s); retry %d in %.0fs", last_err, attempt + 1, delay)
                 self.sleep(min(delay, 120.0))
         raise LLMError(f"LLM call failed after {self.s.max_retries + 1} attempts: {last_err}")
+
+    def list_models(self) -> list[str]:
+        """Model ids this key can use (GET /models)."""
+        if not self.s.api_key and "localhost" not in self.s.base_url:
+            raise SystemExit("LLM API key missing: set GROQ_API_KEY in pipeline/.env (see .env.example)")
+        req = urllib.request.Request(self.s.base_url + "/models", headers={
+            "User-Agent": "nlagg/0.1", **({"Authorization": f"Bearer {self.s.api_key}"} if self.s.api_key else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=self.s.timeout_s) as r:
+                data = json.loads(r.read().decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            raise LLMError(f"API error {e.code}: {e.read().decode('utf-8', 'replace')[:300]}") from e
+        return sorted(m.get("id", "") for m in data.get("data", []) if not FORBIDDEN.search(m.get("id", "")))
 
     def _http(self, body: dict) -> tuple[int, dict, str]:
         if not self.s.api_key and "localhost" not in self.s.base_url and "127.0.0.1" not in self.s.base_url:

@@ -14,6 +14,7 @@
                                 M4: group items into stories; consensus vs divergence for multi-source stories
   compose [--segment S] [--date YYYY-MM-DD] [--no-resolve] [--force]
                                 M5: write our issue (draft) -> pipeline/out/issues/<segment>/<date>.md/.html
+  models                        list the LLM models your key can use (checks config llm.*_model)
   issues [--segment S]          list our issues (draft / approved / sent / rejected)
   approve [--date D] [--dry-run]  M6: approve the latest draft and email it to delivery.recipients
   reject [--date D] [--reason R]  M6: reject a draft (its stories can be used again)
@@ -163,7 +164,12 @@ def cmd_cluster(cfg, a) -> int:
 
 def cmd_compose(cfg, a) -> int:
     from .compose import run_compose
-    r = run_compose(cfg, segment=a.segment, issue_date=a.date, resolve_links=not a.no_resolve, force=a.force)
+    from .llm import LLMError
+    try:
+        r = run_compose(cfg, segment=a.segment, issue_date=a.date, resolve_links=not a.no_resolve, force=a.force)
+    except LLMError as e:
+        print(f"compose failed: {e}", file=sys.stderr)
+        return 1
     if r.skipped_reason:
         print(f"nothing composed: {r.skipped_reason}")
         return 0
@@ -172,6 +178,21 @@ def cmd_compose(cfg, a) -> int:
     for d in r.dropped[:10]:
         print("  dropped:", d)
     print(f"  {r.html_path}\n  {r.md_path}")
+    return 0
+
+
+def cmd_models(cfg, a) -> int:
+    from .llm import ChatClient, LLMSettings
+    st = LLMSettings.from_config(cfg.llm)
+    ids = ChatClient(st).list_models()
+    print(f"{len(ids)} models available to this key at {st.base_url}:")
+    for m in ids:
+        mark = "  <- extract_model" if m == st.extract_model else ("  <- write_model" if m == st.write_model else "")
+        print(f"  {m}{mark}")
+    missing = [m for m in (st.extract_model, st.write_model) if m not in ids]
+    if missing:
+        print(f"NOT available: {', '.join(missing)} — change llm.* in config.yaml")
+        return 1
     return 0
 
 
@@ -268,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--no-resolve", action="store_true", help="don't resolve click-tracker links")
     co.add_argument("--force", action="store_true", help="recompose even if already approved/sent")
 
+    sub.add_parser("models", help="list the LLM models your API key can use")
     li = sub.add_parser("issues", help="list our issues")
     li.add_argument("--segment")
     ap = sub.add_parser("approve", help="M6: approve a draft and email it to delivery.recipients")
@@ -288,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
             "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
             "extract": cmd_extract, "cluster": cmd_cluster, "compose": cmd_compose,
-            "issues": cmd_issues, "approve": cmd_approve, "reject": cmd_reject, "run-daily": cmd_run_daily}[a.cmd](cfg, a)
+            "issues": cmd_issues, "models": cmd_models, "approve": cmd_approve, "reject": cmd_reject, "run-daily": cmd_run_daily}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

@@ -64,8 +64,10 @@ segments:
 llm:
   provider: groq                      # groq | ollama | any OpenAI-compatible endpoint
   base_url: https://api.groq.com/openai/v1
-  extract_model: llama-3.1-8b-instant # cheap per-item extraction
-  write_model: llama-3.3-70b-versatile
+  # Llama 3.1 8B / 3.3 70B became Groq Enterprise-only (Sept 2026): a normal key gets 404 model_not_found.
+  # `python -m nlagg models` lists what your key can use.
+  extract_model: openai/gpt-oss-20b    # cheap, fast per-item extraction
+  write_model: openai/gpt-oss-120b     # composing the issue + agree/differ
   api_key_env: GROQ_API_KEY
   max_retries: 3
   prompt_version: v1

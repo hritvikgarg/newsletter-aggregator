@@ -77,7 +77,7 @@ def test_analysis_points_are_validated(cfg):
     t, s, n = ids["tldr_meta"], ids["sh_meta"], ids["neu_meta"]
 
     def reply(model, messages):
-        assert model == "llama-3.3-70b-versatile"
+        assert model == "openai/gpt-oss-120b"
         return {"consensus": [{"text": "Meta's VR glasses cost $1,299.", "items": [f"i{t}", s]},
                               {"text": "The glasses cost $999.", "items": [t]},           # number not in source
                               {"text": "Apple will respond.", "items": [99999]}],          # unknown item
