@@ -41,9 +41,9 @@ class FakeSvc:
 
 def test_gmail_api_backend(cfg, tmp_path, monkeypatch, mailbox):
     cred = tmp_path / "credentials.json"
-    cred.write_text(json.dumps({"installed": {"client_id": "cid", "client_secret": "sec"}}))
+    cred.write_text(json.dumps({"installed": {"client_id": "cid", "client_secret": "sec"}}), encoding="utf-8")
     tok = tmp_path / "tok.json"
-    tok.write_text(json.dumps({"refresh_token": "rt"}))
+    tok.write_text(json.dumps({"refresh_token": "rt"}), encoding="utf-8")
     monkeypatch.setenv("NLAGG_GOOGLE_CREDENTIALS", str(cred))
     monkeypatch.setenv("NLAGG_GOOGLE_TOKEN", str(tok))
     ids = list(mailbox)

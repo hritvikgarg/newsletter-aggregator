@@ -7,7 +7,7 @@ FIX = Path(__file__).parent / "fixtures"
 
 
 def split_fixture(name, subject="Subject"):
-    return split_blocks(clean((FIX / f"{name}.html").read_text(), None), subject)
+    return split_blocks(clean((FIX / f"{name}.html").read_text(encoding="utf-8"), None), subject)
 
 
 def test_roundup_tldr():
