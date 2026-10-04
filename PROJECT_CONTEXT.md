@@ -18,13 +18,13 @@ sources rather than depending on any single one.
 
 ---
 
-## 2. Current status snapshot (2026-08-07)
-- **Phase 1–3 essentially complete.** Subscriptions live and verified via the Gmail API.
-- **~39–41 of 45 newsletters active** (delivering real issues). 4 are dead (can't subscribe).
-- **Gmail API read access is set up and working** (OAuth, read-only, via the `google-skill` tool).
-- **Phase 4 (archive) is designed + proven on 1 email**; not yet built as a full script.
-- **Phase 5 (LLM enrichment) is designed** (LLM-agnostic; Groq/Qwen, NOT Claude).
+## 2. Current status snapshot (2026-10-04)
+- **Phase 1–3 complete.** 38/45 confirmed delivering, 3 pending, 4 dropped (`data/sources.csv`).
+- **Gmail API read access is set up and working** (OAuth, read-only, via the `google-skill` tool) on the original machine.
+- **Phase 4 capture code is built** (`pipeline/`, M1: Gmail → .eml + SQLite, tested); first real-inbox run pending.
+- **Phase 5 (LLM enrichment) is designed** (LLM-agnostic; Groq/Qwen, NOT Claude); per-item, not per-email (schema v2).
 - **Product strategy for the News segment** has been explored in depth (USP, techniques, sample issues).
+- **Pipeline plan M0–M8** is in §12; first segment end-to-end is 1-TechAI.
 
 ---
 

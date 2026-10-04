@@ -10,8 +10,13 @@ from nlagg import fetchers
 
 # ------------------------------------------------------------------ Gmail API
 class _Exec:
+    calls: list = []
+
     def __init__(self, v): self.v = v
-    def execute(self): return self.v
+
+    def execute(self, num_retries=0):
+        _Exec.calls.append(num_retries)
+        return self.v
 
 
 class FakeMessages:
@@ -53,6 +58,7 @@ def test_gmail_api_backend(cfg, tmp_path, monkeypatch, mailbox):
     assert fm.queries[0].endswith("after:2026/10/01") and fm.queries[0].startswith("in:anywhere")
     f = next(b.fetch([ids[0]]))
     assert f.raw == mailbox[ids[0]] and f.thread_id == "th" + ids[0] and f.labels == ["Label_1"]
+    assert _Exec.calls and all(n == 3 for n in _Exec.calls)          # transient errors retried
 
 
 def test_gmail_api_missing_auth_is_clear(cfg, tmp_path, monkeypatch):

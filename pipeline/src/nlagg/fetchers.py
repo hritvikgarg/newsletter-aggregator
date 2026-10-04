@@ -40,6 +40,7 @@ class GmailApiBackend:
     """Reuses the google-skill OAuth setup (same credentials.json + refresh token)."""
 
     name = "api"
+    RETRIES = 3   # googleapiclient retries 429/5xx with backoff; one blip must not abort a backfill
 
     def __init__(self, cfg: Config):
         try:
@@ -83,7 +84,7 @@ class GmailApiBackend:
         while True:
             r = self.svc.users().messages().list(
                 userId="me", q=q, maxResults=500, pageToken=page, includeSpamTrash=False
-            ).execute()
+            ).execute(num_retries=self.RETRIES)
             ids += [m["id"] for m in r.get("messages", [])]
             page = r.get("nextPageToken")
             if not page:
@@ -91,7 +92,8 @@ class GmailApiBackend:
 
     def fetch(self, gmail_ids: Iterable[str]) -> Iterator[Fetched]:
         for gid in gmail_ids:
-            m = self.svc.users().messages().get(userId="me", id=gid, format="raw").execute()
+            m = self.svc.users().messages().get(userId="me", id=gid, format="raw").execute(
+                num_retries=self.RETRIES)
             raw = base64.urlsafe_b64decode(m["raw"] + "=" * (-len(m["raw"]) % 4))
             yield Fetched(gid, raw, m.get("threadId"), m.get("labelIds"), m.get("snippet"))
 
