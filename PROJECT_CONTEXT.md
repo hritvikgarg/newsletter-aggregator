@@ -34,7 +34,7 @@ sources rather than depending on any single one.
 | 1 — Curate | Research + pick 45 newsletters, 9 segments | ✅ Done |
 | 2 — Gmail infra | Dedicated Gmail, +tag addresses, 9 filters + labels, sender-filters | ✅ Done |
 | 3 — Subscribe & verify | Sign up all 45, confirm, live-verify via Gmail API | ✅ ~Done |
-| 4 — Archive/ingestion | Scrape Gmail → .eml + .md + SQLite index; daily auto-sync | 🟡 Capture code built (`pipeline/`, M1) — needs first real-inbox run |
+| 4 — Archive/ingestion | Scrape Gmail → .eml + .md + SQLite index; daily auto-sync | 🟡 Capture (M1) + clean/split (M2) built — needs first real-inbox run |
 | 5 — LLM enrichment | Non-Claude LLM extracts claims/quotes/entities etc. → DB | ⏳ Designed |
 | 6 — Digest product | Compose our own per-segment newsletter from the archive | ⏳ Strategy explored |
 
@@ -216,10 +216,11 @@ full paywalled text. Closest real competitor to study: Ground News.
 **Pipeline plan (2026-10-04)** — milestones, each a small PR. First segment end-to-end: **1-TechAI**
 (5/5 confirmed, 3 overlapping dailies → clustering testable fast, lower paywall risk than News).
 - **M0 ✅** repo setup, `pipeline/` package, config, schema v2 (items/stories/issues_out).
-- **M1 ✅ code / ⏳ real run** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
+- **M1 ✅ merged (PR #1) / ⏳ real run** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
   → Run `python -m nlagg capture` on the machine with Gmail auth; check `nlagg stats` vs Gmail label counts.
-- **M2** clean HTML (strip tracking/pixels), sponsor **and promo-mail** detection, split issues into `items`
-  (roundups first, then sectioned briefs, essays = 1 item, teasers → fetch "read online"). Done = ≥90% correct on 20 TechAI emails.
+- **M2 ✅ code (PR #2) / ⏳ 20-email check** clean HTML → `.md` (tracking/pixels/footer stripped), sponsor +
+  promo-mail detection, split issues into `items` (roundup, sectioned, essay = 1 item, teaser = 1 item → full-post URL).
+  Done = ≥90% correct on 20 real TechAI emails via `nlagg split-review`.
 - **M3** per-item extraction with Groq (small model) / local Qwen; pydantic validation; cache by content_hash+prompt_version.
 - **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence.
 - **M5** compose: hook · top story · "Everyone's talking about" · quick hits · "Safe to skip" · close;
@@ -232,6 +233,8 @@ Still open from before:
 2. Build a sender → newsletter map (`data/senders.csv`) from the first real `nlagg stats` run.
 3. Decide whether to trim bonus subscriptions (Guardian/Semafor editions, Substack recs inflate volume).
 4. Confirm the 2 pending manual steps (RedChip code, Bootstrapped Founder confirm).
+6. **Opaque tracked links** (beehiiv / Substack / ConvertKit click-trackers) can only be resolved to the real
+   URL with a network request per link, which also registers a "click" with the sender. Resolve or not? (asked 2026-10-04)
 5. **Scheduled runs:** OAuth app in "Testing" → refresh token expires ~7 days. Use IMAP + App Password
    for the scheduled job, or publish the OAuth app.
 
@@ -247,6 +250,16 @@ This file is the durable memory across sessions and for the team. To keep it fre
 ---
 
 ## 14. SESSION LOG (append newest at top)
+
+### Session 2026-10-04 (b) — M2 clean & split (hritvik, branch `hritvik/pipeline-m2-split`)
+- PR #1 (M0+M1) merged by owner. Canonical repo confirmed: `hritvikgarg/newsletter-aggregator`.
+- **M2 built:** `clean.py` (HTML → blocks with heading/bold/link signals; hidden preheaders, pixels, boilerplate
+  and footer removed; redirect unwrapping + conservative tracking-param stripping), `split.py` (roundup/sectioned
+  split with section labels, essay and teaser shapes, label-based sponsor detection, referral/advertise drop,
+  promo mails = promo subject AND ≤ 2 stories), `split_run.py` (+ `.md` files, `items` + `links` rows, retries,
+  `--redo`, `split-review` hand-check sheet). Schema v3 with in-place upgrade of older DBs.
+- 46 tests (fixtures: TLDR-style roundup, Morning-Brew-style sectioned, essay, Substack teaser, promo, plain text).
+- **Not done:** the ≥90% check on 20 real emails (needs the first real capture); opaque tracker resolution (asked).
 
 ### Session 2026-10-04 — Pipeline plan + M0/M1 (hritvik, branch `hritvik/pipeline-m0-m1`)
 - Reviewed repo + 7 reference repos (run-llama, projectgreenhat, AI-Weekly-Digest, news-digest, asadcs, …).
