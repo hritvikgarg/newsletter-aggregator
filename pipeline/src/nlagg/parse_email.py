@@ -60,6 +60,17 @@ def _header(msg: EmailMessage, name: str) -> str:
     return str(v).strip() if v is not None else ""
 
 
+def _decode_words(s: str) -> str:
+    """Decode RFC 2047 encoded words (=?charset?b?...?=) left in a raw header value."""
+    if "=?" not in (s or ""):
+        return s
+    try:
+        from email.header import decode_header, make_header
+        return str(make_header(decode_header(s)))
+    except Exception:
+        return s
+
+
 def _raw_from(msg: EmailMessage) -> str:
     """The From header as sent (the policy-parsed value can mangle unusual display names)."""
     for k, v in msg.raw_items():
@@ -222,7 +233,10 @@ def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: 
               labels: list[str] | None = None, snippet: str | None = None,
               backend: str = "file") -> dict:
     msg = parse_raw(raw)
-    sender_name, sender_email = parse_sender(_raw_from(msg))
+    sender_name, sender_email = parse_sender(_header(msg, "From"))     # decoded (MIME words)
+    if not sender_email or "@" not in sender_email:
+        sender_name, sender_email = parse_sender(_raw_from(msg))          # e.g. unquoted '@' in name
+        sender_name = _decode_words(sender_name)
     sender_email = sender_email.lower()
     subject = _header(msg, "Subject")
     tags = find_plus_tags(msg, inbox_address)

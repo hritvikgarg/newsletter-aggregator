@@ -253,6 +253,18 @@ This file is the durable memory across sessions and for the team. To keep it fre
 
 ## 14. SESSION LOG (append newest at top)
 
+### Session 2026-10-04 (d) — M2 split tuned on real mail (hritvik, branch `hritvik/split-tuning-real-mail`)
+- First real `split` on 1-TechAI: 206 issues → 3,274 items, **872 flagged sponsor (27%)** — wrong. Diagnosed on the
+  real archive (read-only access to the local repo): sponsor labels were *sticky* ("FROM OUR PARTNERS" flagged 409
+  items), CTA buttons and feedback polls became stories, Superhuman's numbered news lists stayed one item, Substack
+  bylines swallowed the intro, Superhuman's MIME-encoded sender name was stored raw (regression from PR #5).
+- **Fixes (PR #6):** sponsor label covers one item; CTA folding; numbered/emoji entry splitting (only when the list
+  is the item); Substack byline/subtitle/footer; feedback-poll + © footer; masthead/podcast boilerplate; RFC 2047
+  decoding of sender names. Evaluated on 50 real Tech/AI issues: TLDR 15.5 items/issue (15% sponsor), Superhuman
+  14.8 (12%), Pragmatic Engineer 9.5 (11%), The Neuron 6.3 (24% = its 2 partner slots), Import AI 2.1 (essays).
+- 67 tests; new layout tests fail on the previous code. Real emails stay local (copyright) — tests use synthetic copies.
+- **Next:** `reindex` + `split --redo` + `split-review` on the real archive → owner ticks the 20-issue sheet (≥ 90%).
+
 ### Session 2026-10-04 (c) — First real capture (hritvik, branch `hritvik/capture-real-run-fixes`)
 - **First real run** (IMAP + App Password on hritvik's Windows PC): 3,176 messages in All Mail; 2,686 saved before
   Gmail dropped the IMAP session (`socket error: EOF`). Re-running resumes (idempotent).

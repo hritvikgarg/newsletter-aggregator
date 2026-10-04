@@ -20,7 +20,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 58 tests, no network needed
+pytest -q                                               # 67 tests, no network needed
 ```
 
 ## Capture (M1)
@@ -71,6 +71,18 @@ What it does, per captured issue (`is_issue = 1`):
 - **Promo mails** (`messages.is_promo`): sale / upgrade / webinar subject **and** ≤ 2 stories.
 - Re-runnable: one transaction per issue; `--redo` replaces items; failures → `split_status = failed`
   with `split_error`, retried next run. Schema v3 columns are added to older DBs automatically.
+
+**Tuned on the first real capture** (TLDR, Superhuman, The Neuron, The Pragmatic Engineer, Import AI;
+see `tests/test_split_real_layouts.py`, synthetic copies of each layout):
+- a sponsor label ("PRESENTED BY X", "FROM OUR PARTNERS", "Together With") covers **one** item, not the rest
+  of the issue; one-link button lines ("Register here.", "Read the report") are folded into their item;
+- lists of news inside one block are split into stories when the list *is* the item: numbered
+  ("1. Title: …") or emoji-labelled ("🤝 Label: …") entries; plain "Why this matters:" paragraphs are facets
+  of one story and stay together;
+- Substack: subtitle + linked byline + "Oct 1 READ IN APP" stay with the post; Like/Comment/Restack and
+  "© 2026 …" end the email; feedback polls ("What did you think…", "Loved it / Terrible") end the email;
+- dropped: masthead leftovers (intros < 12 words), "Timestamps"/"References", podcast durations, @handles,
+  referral/advertise/hiring lines, empty truncated cards.
 
 **M2 done-check (from the plan):** run `split-review` on 20 real 1-TechAI issues and tick OK / Not OK;
 target ≥ 90% OK. Fixtures cover the five shapes, but rules must be tuned on real mail.

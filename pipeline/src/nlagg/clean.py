@@ -139,7 +139,9 @@ ZW_RE = re.compile(r"[​-‏  ‪-‮⁠-⁤﻿͏­]")
 # Boilerplate: dropped wherever it appears (single block)
 BOILERPLATE_RE = re.compile(
     r"^(view|read|open) (this )?(email |post |issue )?(in|on) (your |a )?(browser|web|online)|"
-    r"^(read|view) (it )?online\b|^web version\b|^(sign up|subscribe)( here| now)?[.!]?$|^share (this|on)|"
+    r"^(read|view) (it )?online\b|^web version\b|"
+    r"^(sign up|subscribe|advertise|view online|read online)(\s*\|\s*(sign up|subscribe|advertise|"
+    r"view online|read online|view in browser))+\s*$|^(sign up|subscribe)( here| now)?[.!]?$|^share (this|on)|"
     r"^forwarded this (email|newsletter)|^was this (email )?forwarded to you|"
     r"^(follow us|find us) on|^(download|get) (the|our) app$|^advertise( with us)?$|^\|$",
     re.I)
@@ -147,7 +149,10 @@ BOILERPLATE_RE = re.compile(
 FOOTER_RE = re.compile(
     r"unsubscribe|manage (your )?(email )?(preferences|subscriptions)|update your (email )?preferences|"
     r"you (are|'re|’re) receiving this|you received this|all rights reserved|"
-    r"no longer (want|wish) to receive|our (mailing )?address is",
+    r"no longer (want|wish) to receive|our (mailing )?address is|"
+    # feedback polls and copyright lines (seen in Superhuman, The Neuron, Substack)
+    r"what did you think of (today|this)|your opinion matters|how did we do|tell us how we did|"
+    r"^\W*(loved it|it was ok|terrible|good, not great|it sucked)\b|^\s*(©|copyright\s*©?)\s*\d{4}",
     re.I)
 FOOTER_ZONE = 0.6        # only look for the footer start in the last 40% of blocks
 FOOTER_MAX_WORDS = 60    # footer lines are short; a long paragraph mentioning "unsubscribe" is content

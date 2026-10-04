@@ -38,7 +38,11 @@ DROP_ITEM_RE = re.compile(
     r"invite (your )?(friends|colleagues)|referral (link|program|rewards)|^\s*want to advertise|"
     r"^\s*advertise with|^\s*(love|enjoy(ing)?) (this|tldr|the newsletter)|^\s*how did we do|"
     r"rate (this|today's) (issue|newsletter)|^\s*(was|did) (this|you enjoy)|^\s*feedback\b|"
-    r"^\s*(we're|we are) hiring|^\s*jobs? board|^\s*send us (a )?(tip|feedback)",
+    r"^\s*(we're|we are) hiring|^\s*jobs? board|^\s*send us (a )?(tip|feedback)|"
+    # seen in the first real capture (TLDR, The Neuron, Superhuman, Substack)
+    r"^\s*advertise to\b|want to work at|track your referrals|^\s*https?://\S+\s*$|"
+    r"^\s*(like|comment|restack|share)\s*$|^\s*share the \w+|^\s*want more\?|we just launched|"
+    r"^\s*a cat[’']s commentary|^\s*watch and/or listen",
     re.I)
 TEASER_LINK_RE = re.compile(
     r"(read|keep|continue) (more|reading|the full|the rest)|read (in|on) (the )?app|"
@@ -55,6 +59,39 @@ PROMO_SUBJECT_RE = re.compile(
     r"upgrade to (pro|premium|paid|plus)|go (pro|premium|paid)|black friday|cyber monday|"
     r"free trial|special offer|\bwebinar\b|register (now|today)|\bpromo code\b|exclusive offer",
     re.I)
+# Substack byline: "<Author name>" followed by a date line ("Oct 1 READ IN APP")
+DATE_LINE_RE = re.compile(r"^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d{1,2}\b", re.I)
+# Sub-stories inside one item: "1. Title: text" or "🤝 Label: text" entries (Superhuman, The Neuron)
+NUMBERED_ENTRY_RE = re.compile(r"^\s*\d{1,2}[.)]\s+(?P<title>[^:]{3,140}?):\s+(?P<body>\S.*)$", re.S)
+# Label entries must start with an emoji/symbol ("🤝 Diplomacy GPT: ..."): plain "Why this matters:" style
+# labels are facets of ONE story (The Neuron, Import AI), not separate stories.
+LABEL_ENTRY_RE = re.compile(r"^(?P<pre>[^\w\s]{1,4})\s*(?P<title>[A-Z0-9][^:.!?]{2,60}?):\s+(?P<body>\S.*)$", re.S)
+NOT_A_LABEL = {"photo", "photos", "source", "sources", "prompt", "note", "update", "image", "video",
+               "credit", "via", "bonus", "ps", "p.s", "tl;dr", "tldr", "why it matters", "the catch"}
+ENTRY_MIN_WORDS = 15
+INTRO_MIN_WORDS = 12          # shorter intros are masthead leftovers ("TLDR", a date)
+BARE_SPONSOR_RE = re.compile(r"\W*(together with|presented by|brought to you by|in partnership with|"
+                             r"sponsored by|from our (sponsor|partner)s?)\W*", re.I)
+# Button wording: a short one-link line with one of these words is a call-to-action, not a story
+CTA_HINT_RE = re.compile(r"\b(here|today|now|register|request|read|try|get|start|join|download|claim|"
+                         r"apply|invest|book|watch|listen|sign|seat|demo|report|blueprint|see|discover|"
+                         r"explore|learn|check)\b", re.I)
+# Section names that are reference material, not stories (podcast notes)
+NOT_A_STORY_TITLE_RE = re.compile(r"^\W*(timestamps|references|show notes|transcript|chapters)\W*$|"
+                                  r"^\s*\d{1,2}:\d{2}(:\d{2})?\s*$", re.I)      # podcast durations
+ENTRIES_MIN_SHARE = 0.6       # split into entries only when entries are most of the item (a list, not an essay)
+
+
+def _is_cta_block(b: Block) -> bool:
+    """A one-link button line ("Register your interest here", "Read the report") — body, never a title."""
+    return (b.link_full and b.kind != "heading" and b.words <= 8 and not READ_TIME_RE.search(b.text)
+            and bool(CTA_HINT_RE.search(b.text)))
+
+
+def _is_cta(it: "Item") -> bool:
+    words = len((it.title or "").split())
+    return (it.kind == "story" and it.title_is_link and not it.title_is_heading
+            and len(it.body.split()) < 4 and words <= 14 and (words <= 6 or bool(CTA_HINT_RE.search(it.title or ""))))
 READ_TIME_RE = re.compile(r"\(\s*\d+\s*(minute|min)\s*read\s*\)|\(\s*(github repo|website|sponsor)\s*\)", re.I)
 
 
@@ -68,6 +105,9 @@ class Item:
     kind: str = "story"            # story | intro | essay | teaser
     is_sponsor: int = 0
     links: list[Link] = field(default_factory=list)
+    title_is_link: bool = False                                   # title block was one link (CTA-like)
+    title_is_heading: bool = False
+    blocks: list[Block] = field(default_factory=list, repr=False)  # body blocks (not persisted)
 
     @property
     def word_count(self) -> int:
@@ -121,13 +161,57 @@ def classify_promo(subject: str, n_stories: int) -> int:
     return int(bool(PROMO_SUBJECT_RE.search(subject or "")) and n_stories <= 2)
 
 
+def _entry(b: Block) -> tuple[str, str] | None:
+    """(title, body) if the block is a self-contained news entry, else None."""
+    if b.words < ENTRY_MIN_WORDS:
+        return None
+    m = NUMBERED_ENTRY_RE.match(b.text)
+    if not m:
+        m = LABEL_ENTRY_RE.match(b.text)
+        if (not m or m.group("title").strip().lower() in NOT_A_LABEL
+                or not any(ord(ch) > 0x2000 for ch in m.group("pre"))):      # emoji / pictograph prefix
+            return None
+    title = m.group("title").strip()
+    if len(title.split()) > 20:
+        return None
+    return title, m.group("body").strip()
+
+
+def _split_entries(items: list[Item]) -> list[Item]:
+    """Break an item whose body is a list of >= 2 news entries into one item per entry."""
+    out: list[Item] = []
+    for it in items:
+        entries = [(b, _entry(b)) for b in it.blocks]
+        entry_words = sum(b.words for b, e in entries if e is not None)
+        if (it.kind != "story" or it.is_sponsor or sum(e is not None for _, e in entries) < 2
+                or entry_words < ENTRIES_MIN_SHARE * max(1, sum(b.words for b in it.blocks))):
+            out.append(it)
+            continue
+        rest = [b for b, e in entries if e is None]
+        if sum(b.words for b in rest) >= 15:          # keep the parent if it has its own text
+            parent = Item(0, it.title, "\n\n".join(b.text for b in rest),
+                          _first_source_link([ln for b in rest for ln in b.links]) or it.url,
+                          section=it.section, links=[ln for b in rest for ln in b.links], blocks=rest)
+            out.append(parent)
+        for b, e in entries:
+            if e is None:
+                continue
+            t, body = e
+            out.append(Item(0, t, body, _first_source_link(b.links), section=it.title or it.section,
+                            links=list(b.links), blocks=[b]))
+    return out
+
+
 def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
-    blocks = [b for b in blocks if b.kind != "hr"]
+    # separators ("*******", "———") carry no text
+    blocks = [b for b in blocks if b.kind != "hr" and re.search(r"[0-9A-Za-z]", b.text)]
     if not blocks:
         return SplitResult([], "empty")
 
     items: list[Item] = []
     section: str | None = None
+    section_before_sponsor: str | None = None   # sponsor labels cover ONE item, then this comes back
+    sponsor_section_used = False
     cur: Item | None = None
 
     def close() -> None:
@@ -144,18 +228,40 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
             close()
             cur = Item(position=0, title=b.text, body="", url=None, section=section, kind="drop")
             continue
-        if is_section_label(b, nxt):
+        # Substack byline: author name (often a link) followed by "Oct 1 READ IN APP ..."
+        is_byline = nxt is not None and bool(DATE_LINE_RE.match(nxt.text)) and b.words <= 5
+        nxt2 = blocks[i + 2] if i + 2 < len(blocks) else None
+        before_byline = (nxt is not None and nxt.words <= 5 and nxt2 is not None
+                         and bool(DATE_LINE_RE.match(nxt2.text)))     # a post's subtitle, not a section
+        # A bare sponsor label ("Together With", "Presented by") always labels the next item
+        bare_sponsor = bool(BARE_SPONSOR_RE.fullmatch(b.text))     # may carry the sponsor's logo link
+        if (bare_sponsor or (is_section_label(b, nxt) and not before_byline)) and not is_byline \
+                and len(re.sub(r"[^0-9A-Za-z]", "", b.text)) >= 3:      # not a trivia answer like "B"
             close()
-            section = READ_TIME_RE.sub("", b.text).strip(" :–-")
+            label = READ_TIME_RE.sub("", b.text).strip(" :–-")
+            if SPONSOR_LABEL_RE.search(label):
+                if not (section and SPONSOR_LABEL_RE.search(section)):
+                    section_before_sponsor = section
+                sponsor_section_used = False
+            section = label
             continue
-        if is_title_like(b) and (_has_link(b) or (nxt is not None and not is_title_like(nxt))):
+        # social handles ("@poteto") and button lines are never titles
+        not_title = is_byline or before_byline or _is_cta_block(b) or b.text.lstrip().startswith("@")
+        if is_title_like(b) and not not_title and (_has_link(b) or (nxt is not None and not is_title_like(nxt))):
             close()
+            if section and SPONSOR_LABEL_RE.search(section):
+                if sponsor_section_used:                 # the sponsor slot is over
+                    section = section_before_sponsor
+                else:
+                    sponsor_section_used = True
             cur = Item(position=0, title=b.text, body="", url=_first_source_link(b.links),
-                       section=section, links=list(b.links))
+                       section=section, links=list(b.links), title_is_link=b.link_full,
+                       title_is_heading=b.kind == "heading")
             continue
         if cur is None:
             cur = Item(position=0, title=None, body="", url=None, section=section, kind="intro")
         cur.body = (cur.body + "\n\n" + b.text).strip() if cur.body else b.text
+        cur.blocks.append(b)
         cur.links += b.links
         if cur.url is None:
             cur.url = _first_source_link(b.links)
@@ -165,7 +271,24 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
     # (or the start of an untitled body) so a story is never dropped for what follows it.
     items = [it for it in items
              if it.kind != "drop" and not DROP_ITEM_RE.search(it.title or it.body[:120])
-             and (it.body.strip() or it.url)]          # a bare title with no text and no link is a label
+             and (it.body.strip() or it.url)          # a bare title with no text and no link is a label
+             and not (it.kind == "intro" and len(it.body.split()) < INTRO_MIN_WORDS)
+             and not NOT_A_STORY_TITLE_RE.match(it.title or "")
+             # masthead / name line with nothing under it ("The Pragmatic Engineer")
+             and not (it.kind == "story" and not it.body.strip() and len((it.title or "").split()) <= 3
+                      and not READ_TIME_RE.search(it.title or ""))
+             # truncated card with nothing under it ("Building Codex with Tibo Sott…")
+             and not (it.kind == "story" and not it.body.strip() and (it.title or "").rstrip().endswith(("…", "...")))]
+
+    # Call-to-action buttons ("Register here.", "Start your 30-day trial today.", "Read the report")
+    # are one-link lines with no text of their own: fold them into the item they belong to.
+    merged: list[Item] = []
+    for it in items:
+        if merged and _is_cta(it) and merged[-1].kind in ("story", "intro"):
+            merged[-1].links += it.links
+            continue
+        merged.append(it)
+    items = _split_entries(_mark_sponsors(merged))
     stories = [it for it in items if it.kind == "story"]
     total_words = sum(b.words for b in blocks)
     all_links = [ln for b in blocks for ln in b.links]
@@ -189,11 +312,17 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
                        classify_promo(subject, len(stories)))
 
 
-def _finish(items: list[Item]) -> list[Item]:
-    for n, it in enumerate(items, 1):
-        it.position = n
+def _mark_sponsors(items: list[Item]) -> list[Item]:
+    for it in items:
         labelled = any(SPONSOR_LABEL_RE.search(x) for x in (it.section or "", it.title or ""))
         it.is_sponsor = int(labelled or bool(SPONSOR_BODY_RE.search(it.body[:200])))
+    return items
+
+
+def _finish(items: list[Item]) -> list[Item]:
+    _mark_sponsors(items)
+    for n, it in enumerate(items, 1):
+        it.position = n
         if it.title:
             it.title = it.title.strip()
     return items
