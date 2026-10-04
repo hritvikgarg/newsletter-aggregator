@@ -1,0 +1,51 @@
+# Pipeline configuration. Paths are relative to the REPO ROOT.
+# Secrets never go here — use environment variables (see .env.example).
+
+paths:
+  archive_dir: data/archive          # .eml/.md files (gitignored)
+  db_path: data/archive/index.db     # SQLite index (gitignored)
+  category_feeds: data/category_feeds.csv
+  sources: data/sources.csv
+
+inbox:
+  address: notifyy1008@gmail.com
+  # Gmail search used by the API backend. Sent/drafts/chats never contain newsletters.
+  query: "in:anywhere -in:sent -in:drafts -in:chats"
+  # Incremental runs re-scan this many days before the last successful sync
+  # (cheap: already-captured ids are skipped), so late-arriving mail is never missed.
+  overlap_days: 3
+  # Senders that are never newsletters (our own test mails, Google account notices).
+  ignore_senders:
+    - notifyy1008@gmail.com
+    - noreply-accounts@google.com
+    - no-reply@accounts.google.com
+
+# Segment routing.
+# 1) sender_overrides are checked FIRST (exact substring match on the sender address).
+#    Needed for sites that rejected '+' addresses, and for Lawfare (arrives on +techai, belongs in Legal).
+# 2) Otherwise the '+tag' on Delivered-To/To is mapped using data/category_feeds.csv.
+# 3) Otherwise the message is 'unmatched'.
+segments:
+  sender_overrides:
+    - match: hrbrew@morningbrew.com
+      segment: 4-HRPeopleOps
+    - match: morningbrew.com
+      segment: 2-BizFinance
+    - match: findlaw.com
+      segment: 3-Legal
+    - match: babylonbee.com
+      segment: 7-Absurdist
+    - match: lawfare
+      segment: 3-Legal
+  # Which segments the downstream stages (split/enrich/compose) run on. Capture always takes everything.
+  active: [1-TechAI]
+
+# Phase 5 LLM (used from M3 onward). Never Claude — team rule.
+llm:
+  provider: groq                      # groq | ollama | any OpenAI-compatible endpoint
+  base_url: https://api.groq.com/openai/v1
+  extract_model: llama-3.1-8b-instant # cheap per-item extraction
+  write_model: llama-3.3-70b-versatile
+  api_key_env: GROQ_API_KEY
+  max_retries: 3
+  prompt_version: v1

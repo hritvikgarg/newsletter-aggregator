@@ -63,11 +63,21 @@ uses an LLM, and that is **Groq or local Qwen — never Claude**.
 | `data/sources.csv` | Live per-newsletter status tracker |
 | `data/category_feeds.csv` | 9 segments → +tag → label mapping |
 | `gmail_filters*.xml` | Importable Gmail filters |
+| `pipeline/` | **Pipeline code** (Python `nlagg`): capture → split → enrich → cluster → compose. See `pipeline/README.md` |
 | `tools/google-skill/` | Gmail-API tool (secrets & node_modules are gitignored) |
+| `legacy/ktn/` | Retired Kill-the-Newsletter scripts (reference only) |
 | `data/archive/` | Local newsletter archive (.eml + .md) — **gitignored, stays local** |
 
 ---
 
-## Status (2026-08-07)
-Phases 1–3 done (~39–41/45 newsletters live). Phase 4 (archive) designed + proven on one email.
-Phase 5 (LLM enrichment) designed. See `PROJECT_CONTEXT.md` for the full picture and next steps.
+## Status (2026-10-04)
+Phases 1–3 done: **38/45 confirmed delivering**, 3 pending, 4 dropped (`data/sources.csv`).
+Pipeline: **M0 setup + M1 capture code done** (`pipeline/`), awaiting the first real-inbox run.
+Next: M2 split issues into stories → M3 LLM extraction → M4 cross-source clustering → M5 our digest,
+starting with the 1-TechAI segment. Plan: `PROJECT_CONTEXT.md` §12.
+
+Quick start for the pipeline:
+```bash
+cd pipeline && pip install -e ".[gmail,dev]" && pytest -q
+python -m nlagg capture --dry-run     # on the machine with Gmail auth
+```

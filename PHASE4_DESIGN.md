@@ -163,3 +163,24 @@ and `stats`, so no per-segment tables are needed.
 - Stage A first (free, bulletproof capture) — nothing lost from here on.
 - Stage B with **Groq** to start (free tier, fast, zero hardware), then optionally switch to
   local **Qwen via Ollama** for full privacy by editing enrich.config.json.
+
+---
+
+## v2 additions (2026-10-04) — implemented in `pipeline/src/nlagg/schema.sql`
+
+Why: most issues are roundups (~52%) or sectioned briefs (~35%), so one email = many stories.
+The product USPs ("4/5 sources led with this", Consensus vs Conflict) need **story-level** rows that
+can be matched **across** newsletters. The original schema only had per-email enrichment.
+
+| Table / column | Purpose |
+|---|---|
+| `messages.source_key` | stable per-newsletter key (sender address) → "N distinct sources covered this" |
+| `messages.list_id`, `list_unsubscribe`, `sending_platform`, `has_html`, `has_text`, `capture_backend` | captured headers / provenance |
+| `messages.split_status` | M2 progress flag (pending/done/failed/skipped), like `enrich_status` |
+| `items` | one row per story inside an issue (title, body, primary url, is_sponsor, section, position) |
+| `item_enrichment` | per-item LLM output (summary, category, importance, model, prompt_version, raw_json) |
+| `claims/quotes/links/entities/stats/topics.item_id` | facts can hang off an item, not just the email |
+| `stories` + `story_items` | same story across sources; `source_count`, `consensus`, `divergence` |
+| `issues_out` | issues WE generate: status draft→approved→sent, paths, validator report, model |
+
+Schema version is tracked with `PRAGMA user_version` (v1 = original design above, v2 = this).
