@@ -52,7 +52,7 @@ def cmd_capture(cfg, a) -> int:
         getattr(backend, "close", lambda: None)()
     verb = "would add" if a.dry_run else "added"
     print(f"scanned={r.scanned} {verb}={r.new_added} already_had={r.skipped_existing} "
-          f"ignored={r.ignored_sender} failed={r.failed}")
+          f"ignored={r.ignored_sender} failed={r.failed} duplicates={r.duplicates}")
     for seg, n in sorted(r.by_segment.items()):
         print(f"  {seg:<18} +{n}")
     for e in r.errors[:10]:
@@ -64,7 +64,7 @@ def cmd_reindex(cfg, a) -> int:
     from .reindex import run_reindex
     r = run_reindex(cfg, dry_run=a.dry_run)
     verb = "would change" if a.dry_run else "changed"
-    print(f"scanned={r.scanned} {verb}={r.changed} missing_file={r.missing_file}")
+    print(f"scanned={r.scanned} {verb}={r.changed} missing_file={r.missing_file} duplicates={r.duplicates}")
     for k, n in sorted(r.moves.items(), key=lambda kv: -kv[1]):
         print(f"  {k:<36} {n}")
     return 0

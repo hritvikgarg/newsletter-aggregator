@@ -20,7 +20,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 52 tests, no network needed
+pytest -q                                               # 58 tests, no network needed
 ```
 
 ## Capture (M1)
@@ -35,6 +35,14 @@ python -m nlagg reindex                    # re-apply rules to already-captured 
 ```
 IMAP capture fetches **newest first** and **reconnects automatically** when Gmail drops the session
 (it gives up only after 3 drops in a row; re-running resumes and skips mail already saved).
+
+**Routing order:** `sender_overrides` (address, always win) → `+tag` via `category_feeds.csv` →
+`sender_fallbacks` (only for mail to the plain address; matched on `display name <address>`, e.g. HR Brew vs
+Morning Brew via sailthru) → `unmatched`. Newsletters we did not pick stay `unmatched` on purpose.
+
+**Duplicates:** picks subscribed on both the +tag and the plain address arrive twice. After every capture and
+reindex, copies with the same sender + subject, sent within 3 h, similar length, get `duplicate_of` set; the
+copy routed to a real segment is kept, the other is skipped by `split`. Both stay in the archive.
 
 `source_key` identifies a *newsletter*, not just a sender address: `sender|List-Id` (or `sender|display name`),
 because one address can send several newsletters (TLDR / TLDR AI / TLDR Web Dev; Industry Dive titles).

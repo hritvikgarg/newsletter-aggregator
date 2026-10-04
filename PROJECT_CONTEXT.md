@@ -264,6 +264,13 @@ This file is the durable memory across sessions and for the team. To keep it fre
 - **Fixes:** IMAP reconnect + newest-first; `source_key` = sender|List-Id (or display name); overrides
   pragmaticengineer/importai → 1-TechAI; `nlagg reindex` (re-apply rules to stored mail); `stats --unmatched`.
 - 52 tests. Windows encoding fix (PR #3) merged earlier in the session.
+- Capture completed after PR #4: **3,179 messages, 0 failed**. `stats --unmatched`: TLDR, Trends.vc, National Law
+  Review, Morning/HR Brew (sailthru) also arrive at the plain address; ~20 newsletters nobody picked were signed up on
+  the plain address (Bloomberg/Money Stuff, Axios Markets, Snacks, Sherwood, Exponential View, The AI Report, …).
+- **Owner decisions:** (1) newsletters we did not pick stay `unmatched` (ignored by the pipeline); (2) duplicate
+  subscriptions are handled in the pipeline (dedupe), not by unsubscribing.
+- **PR #5:** `sender_fallbacks` (plain-address picks, matched on display name + address); `duplicate_of` (schema v4)
+  + dedupe after capture/reindex, split skips duplicates; robust From parsing (unquoted '@' in display names). 58 tests.
 
 ### Session 2026-10-04 (b) — M2 clean & split (hritvik, branch `hritvik/pipeline-m2-split`)
 - PR #1 (M0+M1) merged by owner. Canonical repo confirmed: `hritvikgarg/newsletter-aggregator`.

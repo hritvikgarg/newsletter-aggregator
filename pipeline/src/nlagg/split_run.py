@@ -35,7 +35,7 @@ def split_raw(raw: bytes, subject: str) -> tuple[SplitResult, str]:
 
 def _select(conn, segments: list[str] | None, redo: bool, limit: int | None, gmail_ids: list[str] | None):
     sql = ("SELECT gmail_id, segment, source_key, subject, sent_date, raw_eml_path FROM messages "
-           "WHERE is_issue = 1 AND raw_eml_path IS NOT NULL")
+           "WHERE is_issue = 1 AND raw_eml_path IS NOT NULL AND duplicate_of IS NULL")
     args: list = []
     if gmail_ids:
         sql += f" AND gmail_id IN ({','.join('?' * len(gmail_ids))})"

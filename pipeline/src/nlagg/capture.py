@@ -28,6 +28,7 @@ class CaptureResult:
     skipped_existing: int = 0
     ignored_sender: int = 0
     failed: int = 0
+    duplicates: int = 0
     by_segment: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
@@ -82,7 +83,7 @@ def run_capture(cfg: Config, backend: Backend, *, backfill: bool = False, since:
                     f.raw, f.gmail_id,
                     inbox_address=cfg.inbox_address,
                     tag_to_segment=cfg.tag_to_segment,
-                    sender_overrides=cfg.sender_overrides,
+                    sender_overrides=cfg.sender_overrides, sender_fallbacks=cfg.sender_fallbacks,
                     thread_id=f.thread_id, labels=f.labels, snippet=f.snippet,
                     backend=backend.name,
                 )
@@ -104,6 +105,8 @@ def run_capture(cfg: Config, backend: Backend, *, backfill: bool = False, since:
                 res.failed += 1
                 res.errors.append(f"{f.gmail_id}: {type(e).__name__}: {e}")
                 log.warning("failed %s: %s", f.gmail_id, e)
+        from .dedupe import mark_duplicates
+        res.duplicates = mark_duplicates(conn)
         if res.failed:
             status, notes = "partial", "; ".join(res.errors[:10])
     except Exception as e:

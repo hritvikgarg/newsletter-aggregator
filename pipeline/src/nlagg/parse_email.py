@@ -60,6 +60,14 @@ def _header(msg: EmailMessage, name: str) -> str:
     return str(v).strip() if v is not None else ""
 
 
+def _raw_from(msg: EmailMessage) -> str:
+    """The From header as sent (the policy-parsed value can mangle unusual display names)."""
+    for k, v in msg.raw_items():
+        if k.lower() == "from":
+            return re.sub(r"\s+", " ", str(v)).strip()
+    return _header(msg, "From")
+
+
 def _all_headers(msg: EmailMessage, name: str) -> list[str]:
     return [str(v) for v in (msg.get_all(name) or [])]
 
@@ -79,7 +87,10 @@ def find_plus_tags(msg: EmailMessage, inbox_address: str) -> list[str]:
 
 
 def route_segment(sender_email: str, tags: list[str], tag_to_segment: dict[str, str],
-                  sender_overrides: list[tuple[str, str]]) -> str:
+                  sender_overrides: list[tuple[str, str]],
+                  sender_fallbacks: list[tuple[str, str]] = (), sender_name: str = "") -> str:
+    """1) overrides (sender address, always win)  2) '+tag'  3) fallbacks (only when no tag
+    matched; matched on "name <address>", so one sending service can be split by display name)."""
     s = sender_email.lower()
     for needle, segment in sender_overrides:
         if needle in s:
@@ -87,6 +98,10 @@ def route_segment(sender_email: str, tags: list[str], tag_to_segment: dict[str, 
     for t in tags:
         if t in tag_to_segment:
             return tag_to_segment[t]
+    who = f"{sender_name} <{sender_email}>".lower()
+    for needle, segment in sender_fallbacks:
+        if needle in who:
+            return segment
     return "unmatched"
 
 
@@ -176,6 +191,21 @@ def source_key(msg: EmailMessage, sender_email: str, sender_name: str) -> str | 
     return f"{sender_email}|{part}" if part else sender_email
 
 
+_ANGLE_RE = re.compile(r"<\s*([^<>\s]+@[^<>\s]+)\s*>")
+
+
+def parse_sender(from_header: str) -> tuple[str, str]:
+    """(display name, address). parseaddr returns ('', '') for display names with an unquoted '@'
+    (e.g. `Dru Riley @ Trends.vc <d@trends.vc>`), so fall back to the <address> in the raw header."""
+    name, addr = parseaddr(from_header)
+    if addr and "@" in addr:
+        return name, addr
+    m = _ANGLE_RE.search(from_header or "")
+    if m:
+        return from_header[:m.start()].strip().strip('"').strip(), m.group(1)
+    return name, addr
+
+
 def is_issue(subject: str, word_count: int) -> int:
     """0 only when the subject looks like welcome/confirm (or is empty) AND the body is short."""
     looks_like_admin = not subject.strip() or bool(CONFIRM_RE.search(subject))
@@ -187,11 +217,12 @@ def slugify(s: str, n: int = 28) -> str:
 
 
 def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: dict[str, str],
-              sender_overrides: list[tuple[str, str]], thread_id: str | None = None,
+              sender_overrides: list[tuple[str, str]],
+              sender_fallbacks: list[tuple[str, str]] = (), thread_id: str | None = None,
               labels: list[str] | None = None, snippet: str | None = None,
               backend: str = "file") -> dict:
     msg = parse_raw(raw)
-    sender_name, sender_email = parseaddr(_header(msg, "From"))
+    sender_name, sender_email = parse_sender(_raw_from(msg))
     sender_email = sender_email.lower()
     subject = _header(msg, "Subject")
     tags = find_plus_tags(msg, inbox_address)
@@ -203,7 +234,8 @@ def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: 
     return {
         "gmail_id": gmail_id,
         "thread_id": thread_id,
-        "segment": route_segment(sender_email, tags, tag_to_segment, sender_overrides),
+        "segment": route_segment(sender_email, tags, tag_to_segment, sender_overrides,
+                                 sender_fallbacks, sender_name),
         "source_key": source_key(msg, sender_email, sender_name),
         "newsletter": None,          # mapped to sources.csv names later (sender -> newsletter table)
         "publisher": None,
