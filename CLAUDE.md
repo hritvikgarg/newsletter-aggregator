@@ -23,5 +23,6 @@ Live per-newsletter status is in `data/sources.csv`. Design is in `PHASE4_DESIGN
 
 ## Where things stand (2026-10-04)
 Phases 1–3 done (38/45 confirmed; see `sources.csv`). Pipeline code lives in **`pipeline/`** (Python `nlagg`):
-M0 setup + M1 capture (Gmail → .eml + SQLite) built and tested; next is M2 (split issues into story items).
+M0+M1 (capture Gmail → .eml + SQLite) merged; M2 (clean → .md, split issues into story items) in PR #2.
+Next: first real-inbox run + 20-email split check, then M3 (per-item LLM extraction, Groq/Qwen).
 Plan + milestones: `PROJECT_CONTEXT.md` §12. How to run: `pipeline/README.md`.

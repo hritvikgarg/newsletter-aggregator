@@ -72,8 +72,8 @@ uses an LLM, and that is **Groq or local Qwen — never Claude**.
 
 ## Status (2026-10-04)
 Phases 1–3 done: **38/45 confirmed delivering**, 3 pending, 4 dropped (`data/sources.csv`).
-Pipeline: **M0 setup + M1 capture code done** (`pipeline/`), awaiting the first real-inbox run.
-Next: M2 split issues into stories → M3 LLM extraction → M4 cross-source clustering → M5 our digest,
+Pipeline: **M0 + M1 capture merged**; **M2 clean & split** in review. Awaiting the first real-inbox run.
+Next: M3 LLM extraction → M4 cross-source clustering → M5 our digest,
 starting with the 1-TechAI segment. Plan: `PROJECT_CONTEXT.md` §12.
 
 Quick start for the pipeline:

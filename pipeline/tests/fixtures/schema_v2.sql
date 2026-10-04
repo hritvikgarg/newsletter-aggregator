@@ -3,9 +3,7 @@
 --   messages: source_key, list_id, list_unsubscribe, sending_platform, has_html, has_text,
 --             split_status, capture_backend
 --   items / stories / story_items / issues_out  (story-level analysis + our generated issues)
--- v3 (M2): messages.is_promo/split_shape/split_error, items.kind/word_count.
--- Applied idempotently; PRAGMA user_version tracks the schema version; db.py adds
--- missing columns to databases created by an older version.
+-- Applied idempotently; PRAGMA user_version tracks the schema version.
 
 -- ---------------------------------------------------------------- Stage A
 CREATE TABLE IF NOT EXISTS messages (
@@ -39,10 +37,7 @@ CREATE TABLE IF NOT EXISTS messages (
   capture_backend  TEXT,               -- api | imap | file
   ingested_at      TEXT,
   split_status     TEXT DEFAULT 'pending',   -- pending | done | failed | skipped
-  enrich_status    TEXT DEFAULT 'pending',
-  is_promo         INTEGER DEFAULT 0,        -- v3: sale/upgrade/webinar mail (set by M2)
-  split_shape      TEXT,                     -- v3: roundup | essay | teaser | empty
-  split_error      TEXT                      -- v3
+  enrich_status    TEXT DEFAULT 'pending'
 );
 
 CREATE TABLE IF NOT EXISTS sync_log (
@@ -63,8 +58,6 @@ CREATE TABLE IF NOT EXISTS items (
   body        TEXT,
   url         TEXT,             -- primary outbound link (tracking stripped)
   is_sponsor  INTEGER DEFAULT 0,
-  kind        TEXT DEFAULT 'story',   -- v3: story | intro | essay | teaser
-  word_count  INTEGER,                -- v3
   segment     TEXT,
   source_key  TEXT,
   sent_date   TEXT,

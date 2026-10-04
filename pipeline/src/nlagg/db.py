@@ -5,7 +5,17 @@ import sqlite3
 from importlib import resources
 from pathlib import Path
 
-SCHEMA_VERSION = 2   # v1 = PHASE4_DESIGN.md original, v2 = items/stories/issues_out additions
+SCHEMA_VERSION = 3   # v1 = PHASE4_DESIGN.md original, v2 = items/stories/issues_out, v3 = M2 columns
+
+# Columns added after a table was first created: (table, column, type/default).
+# CREATE TABLE IF NOT EXISTS does not touch existing tables, so older DBs get them via ALTER.
+ADDED_COLUMNS = [
+    ("messages", "is_promo", "INTEGER DEFAULT 0"),
+    ("messages", "split_shape", "TEXT"),
+    ("messages", "split_error", "TEXT"),
+    ("items", "kind", "TEXT DEFAULT 'story'"),
+    ("items", "word_count", "INTEGER"),
+]
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -19,6 +29,11 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
+    # Upgrade existing tables first, so indexes in schema.sql may reference newer columns.
+    for table, col, decl in ADDED_COLUMNS:
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if have and col not in have:          # empty = table not created yet (schema.sql will)
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     sql = resources.files("nlagg").joinpath("schema.sql").read_text(encoding="utf-8")
     conn.executescript(sql)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

@@ -3,6 +3,10 @@
   init-db                       create/upgrade data/archive/index.db
   capture [--backend api|imap|file] [--backfill] [--since YYYY-MM-DD] [--limit N] [--dry-run] [--from DIR]
   stats [--days N]              per-segment / per-sender counts, last sync runs
+  split [--segment S ...|--all-segments] [--redo] [--limit N] [--id GMAIL_ID ...]
+                                M2: clean .md + story items for captured issues
+  split-review [--segment S] [--n 20] [--out FILE]
+                                write a hand-check sheet for the M2 >=90% check
 """
 from __future__ import annotations
 
@@ -78,6 +82,28 @@ def cmd_stats(cfg, a) -> int:
     return 0
 
 
+def cmd_split(cfg, a) -> int:
+    from .split_run import run_split
+    segs = None if a.all_segments else (a.segment or cfg.active_segments)
+    r = run_split(cfg, segments=segs, redo=a.redo, limit=a.limit, gmail_ids=a.ids)
+    print(f"split {r.processed} issues -> {r.items} items ({r.sponsors} sponsor) "
+          f"promo_mails={r.promos} failed={r.failed}  segments={'all' if segs is None else ','.join(segs)}")
+    for shape, n in sorted(r.shapes.items()):
+        print(f"  {shape:<8} {n}")
+    for e in r.errors[:10]:
+        print("  ERROR", e, file=sys.stderr)
+    return 1 if r.failed else 0
+
+
+def cmd_split_review(cfg, a) -> int:
+    from .split_run import write_review
+    seg = a.segment or (cfg.active_segments[0] if cfg.active_segments else "1-TechAI")
+    out = a.out or (cfg.repo_root / "pipeline" / "out" / "review" / f"split-review-{seg}-{date.today()}.md")
+    n = write_review(cfg, Path(out), segment=seg, n=a.n)
+    print(f"wrote {n} issues to {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nlagg", description="Newsletter aggregator pipeline")
     p.add_argument("--config", type=Path, help="path to config.yaml (default: pipeline/config.yaml)")
@@ -97,11 +123,24 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("stats", help="counts per segment/sender + recent sync runs")
     s.add_argument("--days", type=int, default=14)
 
+    sp = sub.add_parser("split", help="M2: clean + split captured issues into story items")
+    sp.add_argument("--segment", action="append", help="segment id (repeatable); default: config segments.active")
+    sp.add_argument("--all-segments", action="store_true")
+    sp.add_argument("--redo", action="store_true", help="re-split issues already done (e.g. after a rule change)")
+    sp.add_argument("--limit", type=int)
+    sp.add_argument("--id", dest="ids", action="append", help="split only this gmail_id (repeatable)")
+
+    rv = sub.add_parser("split-review", help="write a hand-check sheet for split quality")
+    rv.add_argument("--segment")
+    rv.add_argument("--n", type=int, default=20)
+    rv.add_argument("--out", type=Path)
+
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
-    return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats}[a.cmd](cfg, a)
+    return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
+            "split": cmd_split, "split-review": cmd_split_review}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

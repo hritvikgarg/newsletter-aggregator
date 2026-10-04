@@ -184,3 +184,15 @@ can be matched **across** newsletters. The original schema only had per-email en
 | `issues_out` | issues WE generate: status draft→approved→sent, paths, validator report, model |
 
 Schema version is tracked with `PRAGMA user_version` (v1 = original design above, v2 = this).
+
+## v3 additions (2026-10-04, M2)
+| Column | Purpose |
+|---|---|
+| `messages.is_promo` | sale / upgrade / webinar mail (subject rule + ≤ 2 stories) |
+| `messages.split_shape` | roundup / essay / teaser / empty |
+| `messages.split_error` | last split failure, retried next run |
+| `items.kind` | story / intro / essay / teaser |
+| `items.word_count` | title + body words |
+
+`links` rows from M2 carry `item_id`; `link_type` = source / tracked / social / sponsor.
+Older DBs are upgraded in place (`ALTER TABLE ADD COLUMN`) by `db.connect()`.
