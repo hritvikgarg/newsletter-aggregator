@@ -20,7 +20,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 47 tests, no network needed
+pytest -q                                               # 52 tests, no network needed
 ```
 
 ## Capture (M1)
@@ -29,7 +29,15 @@ python -m nlagg init-db                    # creates data/archive/index.db (giti
 python -m nlagg capture --dry-run          # how many new mails would be pulled
 python -m nlagg capture                    # first run = full backfill; later runs = incremental
 python -m nlagg stats                      # per-segment counts, per-sender health, last sync runs
+python -m nlagg stats --unmatched          # what landed in 'unmatched', by sender + address
+python -m nlagg reindex --dry-run          # after changing routing rules: preview segment moves
+python -m nlagg reindex                    # re-apply rules to already-captured mail (no download, files stay put)
 ```
+IMAP capture fetches **newest first** and **reconnects automatically** when Gmail drops the session
+(it gives up only after 3 drops in a row; re-running resumes and skips mail already saved).
+
+`source_key` identifies a *newsletter*, not just a sender address: `sender|List-Id` (or `sender|display name`),
+because one address can send several newsletters (TLDR / TLDR AI / TLDR Web Dev; Industry Dive titles).
 Options: `--backend api|imap|file`, `--backfill`, `--since YYYY-MM-DD`, `--limit N`, `--from DIR` (file backend).
 
 ## Clean & split (M2)
