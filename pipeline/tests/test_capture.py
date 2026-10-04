@@ -101,3 +101,27 @@ def test_schema_has_story_tables(cfg):
     assert {"messages", "items", "stories", "story_items", "issues_out", "item_enrichment",
             "enrichment", "claims", "entities", "sync_log"} <= names
     assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+
+
+def test_reindex_applies_new_rules_without_moving_files(cfg, fake_backend_cls):
+    from tests.conftest import make_eml
+    from nlagg.reindex import run_reindex
+    box = {"18f0aaaaaaaaaa01": make_eml(frm="The Pragmatic Engineer <pragmaticengineer@substack.com>",
+                                        to="notifyy1008+legal@gmail.com", delivered_to="notifyy1008+legal@gmail.com",
+                                        subject="The Pulse #150", html="<p>" + "word " * 400 + "</p>")}
+    # capture with the OLD rules (no pragmaticengineer override) -> lands in Legal
+    old = [o for o in cfg.sender_overrides if o[0] != "pragmaticengineer"]
+    cfg.sender_overrides[:] = old
+    run_capture(cfg, fake_backend_cls(box))
+    assert rows(cfg)["18f0aaaaaaaaaa01"]["segment"] == "3-Legal"
+    path_before = rows(cfg)["18f0aaaaaaaaaa01"]["raw_eml_path"]
+    # new rule added -> reindex
+    cfg.sender_overrides.insert(0, ("pragmaticengineer", "1-TechAI"))
+    assert run_reindex(cfg, dry_run=True).moves == {"3-Legal -> 1-TechAI": 1}
+    assert rows(cfg)["18f0aaaaaaaaaa01"]["segment"] == "3-Legal"          # dry run wrote nothing
+    r = run_reindex(cfg)
+    assert r.changed == 1 and r.missing_file == 0
+    after = rows(cfg)["18f0aaaaaaaaaa01"]
+    assert after["segment"] == "1-TechAI" and after["raw_eml_path"] == path_before
+    assert (cfg.archive_dir / path_before).exists()
+    assert run_reindex(cfg).changed == 0                                  # idempotent

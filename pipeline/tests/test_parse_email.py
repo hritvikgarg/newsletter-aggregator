@@ -28,7 +28,7 @@ def test_fields(cfg, mailbox):
     r = row(cfg, mailbox["18f0a1b2c3d4e5f6"], "18f0a1b2c3d4e5f6")
     assert r["sender_email"] == "dan@tldrnewsletter.com"
     assert r["sender_name"] == "TLDR"
-    assert r["source_key"] == "dan@tldrnewsletter.com"
+    assert r["source_key"] == "dan@tldrnewsletter.com|tldr"          # no List-Id -> display name
     assert r["sent_date"] == "2026-10-05T11:01:00+00:00"
     assert r["received_date"] == "2026-10-05T11:01:02+00:00"
     assert r["is_issue"] == 1
@@ -75,3 +75,24 @@ def test_dotenv_with_bom_and_quotes(tmp_path, monkeypatch):
     import os
     assert os.environ["NLAGG_TEST_USER"] == "me@example.com"
     assert os.environ["NLAGG_TEST_PW"] == "abcd efgh"
+
+
+def test_source_key_separates_newsletters_from_one_sender():
+    from tests.conftest import make_eml
+    from nlagg.parse_email import source_key
+    def key(name, list_id=None):
+        h = {"List-Id": list_id} if list_id else {}
+        m = parse_raw(make_eml(frm=f"{name} <dan@tldrnewsletter.com>", to="x@y.z", subject="s", headers=h))
+        return source_key(m, "dan@tldrnewsletter.com", name)
+    assert len({key("TLDR"), key("TLDR AI"), key("TLDR Web Dev")}) == 3
+    assert key("TLDR AI") == key("TLDR AI")                           # stable
+    assert key("Anything", "HR Dive <hr.divenewsletter.com>") == "dan@tldrnewsletter.com|hr.divenewsletter.com"
+
+
+def test_routing_overrides_from_first_real_capture(cfg):
+    from nlagg.parse_email import route_segment
+    r = lambda sender, tags: route_segment(sender, tags, cfg.tag_to_segment, cfg.sender_overrides)
+    assert r("pragmaticengineer@substack.com", ["legal"]) == "1-TechAI"
+    assert r("pragmaticengineer+deepdives@substack.com", ["legal"]) == "1-TechAI"
+    assert r("importai@substack.com", ["legal"]) == "1-TechAI"
+    assert r("lawfare+today-on-lawfare@substack.com", ["techai"]) == "3-Legal"

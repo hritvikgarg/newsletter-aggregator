@@ -216,7 +216,7 @@ full paywalled text. Closest real competitor to study: Ground News.
 **Pipeline plan (2026-10-04)** — milestones, each a small PR. First segment end-to-end: **1-TechAI**
 (5/5 confirmed, 3 overlapping dailies → clustering testable fast, lower paywall risk than News).
 - **M0 ✅** repo setup, `pipeline/` package, config, schema v2 (items/stories/issues_out).
-- **M1 ✅ merged (PR #1) / ⏳ real run** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
+- **M1 ✅ merged / 🟡 first real run done (2,686/3,176; resume + fixes in PR #4)** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
   → Run `python -m nlagg capture` on the machine with Gmail auth; check `nlagg stats` vs Gmail label counts.
 - **M2 ✅ code (PR #2) / ⏳ 20-email check** clean HTML → `.md` (tracking/pixels/footer stripped), sponsor +
   promo-mail detection, split issues into `items` (roundup, sectioned, essay = 1 item, teaser = 1 item → full-post URL).
@@ -252,6 +252,18 @@ This file is the durable memory across sessions and for the team. To keep it fre
 ---
 
 ## 14. SESSION LOG (append newest at top)
+
+### Session 2026-10-04 (c) — First real capture (hritvik, branch `hritvik/capture-real-run-fixes`)
+- **First real run** (IMAP + App Password on hritvik's Windows PC): 3,176 messages in All Mail; 2,686 saved before
+  Gmail dropped the IMAP session (`socket error: EOF`). Re-running resumes (idempotent).
+- **Findings from `nlagg stats`:** Pragmatic Engineer + Import AI arrive on +legal (Substack recommendation) →
+  were routed to Legal; one sender address carries several newsletters (dan@tldrnewsletter.com = TLDR / TLDR AI /
+  TLDR Web Dev; newsletter@divenewsletter.com = several Industry Dive titles); 188 `unmatched` (NLR, TLDR,
+  Trends.vc, Morning Brew via sailthru at the plain address — possibly duplicate subscriptions, to check);
+  high volume in 4-HR (583) and 9-News (839) from bonus editions (Semafor, Industry Dive, SHRM lists).
+- **Fixes:** IMAP reconnect + newest-first; `source_key` = sender|List-Id (or display name); overrides
+  pragmaticengineer/importai → 1-TechAI; `nlagg reindex` (re-apply rules to stored mail); `stats --unmatched`.
+- 52 tests. Windows encoding fix (PR #3) merged earlier in the session.
 
 ### Session 2026-10-04 (b) — M2 clean & split (hritvik, branch `hritvik/pipeline-m2-split`)
 - PR #1 (M0+M1) merged by owner. Canonical repo confirmed: `hritvikgarg/newsletter-aggregator`.

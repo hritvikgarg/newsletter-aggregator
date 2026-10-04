@@ -109,17 +109,38 @@ class ImapBackend:
     _THRID_RE = re.compile(rb"X-GM-THRID (\d+)")
     _UID_RE = re.compile(rb"UID (\d+)")
 
+    # Gmail drops long sessions ("socket error: EOF"). Reconnect and carry on; give up only if the
+    # connection keeps dropping without any successful download in between.
+    MAX_CONSECUTIVE_DROPS = 3
+
     def __init__(self, cfg: Config):
-        user = os.environ.get("NLAGG_IMAP_USER", cfg.inbox_address)
-        pw = os.environ.get("NLAGG_IMAP_PASSWORD")
-        if not pw:
+        self._user = os.environ.get("NLAGG_IMAP_USER", cfg.inbox_address)
+        self._pw = os.environ.get("NLAGG_IMAP_PASSWORD")
+        if not self._pw:
             raise SystemExit("Set NLAGG_IMAP_PASSWORD (Gmail App Password) for --backend imap.")
+        self.reconnects = 0
+        self._consecutive_drops = 0
+        self._connect()
+        self._uid_by_id: dict[str, bytes] = {}
+
+    def _connect(self) -> None:
         self.imap = imaplib.IMAP4_SSL(self.HOST)
-        self.imap.login(user, pw)
+        self.imap.login(self._user, self._pw)
         typ, _ = self.imap.select(self.MAILBOX, readonly=True)
         if typ != "OK":
             raise SystemExit(f"Could not open {self.MAILBOX}; is IMAP enabled in Gmail settings?")
-        self._uid_by_id: dict[str, bytes] = {}
+
+    def _reconnect(self) -> None:
+        self._consecutive_drops += 1
+        if self._consecutive_drops > self.MAX_CONSECUTIVE_DROPS:
+            raise RuntimeError(f"IMAP connection dropped {self.MAX_CONSECUTIVE_DROPS} times in a row; "
+                               "re-run capture to resume (already-saved mail is skipped)")
+        self.reconnects += 1
+        try:
+            self.imap.logout()
+        except Exception:
+            pass
+        self._connect()      # UIDs stay valid: same mailbox, same UIDVALIDITY
 
     def list_ids(self, since: date | None) -> list[str]:
         crit = f"SINCE {since:%d-%b-%Y}" if since else "ALL"
@@ -138,12 +159,22 @@ class ImapBackend:
                     gid = format(int(m.group(1)), "x")
                     self._uid_by_id[gid] = u.group(1)
                     ids.append(gid)
-        return ids
+        # Newest first, so recent issues are available even if a long backfill is interrupted
+        return sorted(ids, key=lambda g: int(self._uid_by_id[g]), reverse=True)
+
+    def _fetch_one(self, uid: bytes):
+        while True:
+            try:
+                out = self.imap.uid("FETCH", uid, "(X-GM-THRID X-GM-LABELS BODY.PEEK[])")
+                self._consecutive_drops = 0
+                return out
+            except (imaplib.IMAP4.abort, OSError):
+                self._reconnect()
 
     def fetch(self, gmail_ids: Iterable[str]) -> Iterator[Fetched]:
         for gid in gmail_ids:
             uid = self._uid_by_id[gid]
-            typ, resp = self.imap.uid("FETCH", uid, "(X-GM-THRID X-GM-LABELS BODY.PEEK[])")
+            typ, resp = self._fetch_one(uid)
             for part in resp:
                 if isinstance(part, tuple):
                     t = self._THRID_RE.search(part[0])

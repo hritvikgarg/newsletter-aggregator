@@ -50,7 +50,7 @@ def test_split_end_to_end(cfg, fake_backend_cls):
 
     items = q(cfg, "SELECT * FROM items WHERE gmail_id = '19a0000000000001' ORDER BY position")
     assert len(items) == 5 and items[2]["is_sponsor"] == 1
-    assert items[0]["segment"] == "1-TechAI" and items[0]["source_key"] == "dan@tldrnewsletter.com"
+    assert items[0]["segment"] == "1-TechAI" and items[0]["source_key"] == "dan@tldrnewsletter.com|tldr ai"
     assert items[0]["kind"] == "story" and items[0]["word_count"] > 20
     links = q(cfg, "SELECT * FROM links WHERE item_id = ?", items[0]["id"])
     assert links[0]["url"] == "https://openai.com/index/agents-sdk" and links[0]["domain"] == "openai.com"

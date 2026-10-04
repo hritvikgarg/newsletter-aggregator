@@ -97,7 +97,7 @@ def test_imap_backend(cfg, monkeypatch, mailbox):
     monkeypatch.setattr(fetchers.imaplib, "IMAP4_SSL", lambda host: FakeImap(host, mailbox))
     b = fetchers.ImapBackend(cfg)
     ids = b.list_ids(date(2026, 10, 2))
-    assert ids == list(mailbox)                                      # hex(X-GM-MSGID) == API id
+    assert ids == list(mailbox)[::-1]          # hex(X-GM-MSGID) == API id; newest (highest UID) first
     assert b.imap.searches == ["SINCE 02-Oct-2026"]
     f = next(b.fetch([ids[1]]))
     assert f.raw == mailbox[ids[1]]
@@ -108,3 +108,49 @@ def test_imap_needs_password(cfg, monkeypatch):
     monkeypatch.delenv("NLAGG_IMAP_PASSWORD", raising=False)
     with pytest.raises(SystemExit, match="NLAGG_IMAP_PASSWORD"):
         fetchers.ImapBackend(cfg)
+
+
+class DroppingImap(FakeImap):
+    """Gmail closes the socket mid-backfill: every 2nd body FETCH on a connection raises abort,
+    i.e. the connection keeps dropping all through a long backfill."""
+    instances = []
+
+    def __init__(self, host, box):
+        super().__init__(host, box)
+        self.body_fetches = 0
+        DroppingImap.instances.append(self)
+
+    def uid(self, cmd, *args):
+        if cmd == "FETCH" and args[1] != "(X-GM-MSGID)":
+            self.body_fetches += 1
+            if self.body_fetches == 2:
+                import imaplib
+                raise imaplib.IMAP4.abort("command: UID => socket error: EOF")
+        return super().uid(cmd, *args)
+
+
+def test_imap_reconnects_when_gmail_drops_connection(cfg, monkeypatch, mailbox):
+    DroppingImap.instances = []
+    monkeypatch.setenv("NLAGG_IMAP_PASSWORD", "app pw")
+    monkeypatch.setattr(fetchers.imaplib, "IMAP4_SSL", lambda host: DroppingImap(host, mailbox))
+    b = fetchers.ImapBackend(cfg)
+    ids = b.list_ids(None)
+    got = [f.gmail_id for f in b.fetch(ids)]
+    assert got == ids                                   # nothing skipped, nothing duplicated
+    # 8 messages, a drop on every 2nd fetch of each connection -> many reconnects, still completes
+    assert b.reconnects == len(ids) - 1 and len(DroppingImap.instances) == len(ids)
+
+
+def test_imap_gives_up_after_too_many_drops(cfg, monkeypatch, mailbox):
+    class AlwaysDrop(FakeImap):
+        def uid(self, cmd, *args):
+            if cmd == "FETCH" and args[1] != "(X-GM-MSGID)":
+                import imaplib
+                raise imaplib.IMAP4.abort("socket error: EOF")
+            return super().uid(cmd, *args)
+    monkeypatch.setenv("NLAGG_IMAP_PASSWORD", "app pw")
+    monkeypatch.setattr(fetchers.imaplib, "IMAP4_SSL", lambda host: AlwaysDrop(host, mailbox))
+    b = fetchers.ImapBackend(cfg)
+    ids = b.list_ids(None)
+    with pytest.raises(RuntimeError, match="3 times in a row"):
+        list(b.fetch(ids))

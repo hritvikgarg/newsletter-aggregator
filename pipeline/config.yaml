@@ -37,6 +37,11 @@ segments:
       segment: 7-Absurdist
     - match: lawfare
       segment: 3-Legal
+    # Tech/AI picks that arrived on +legal via Substack recommendations (seen in the first real capture)
+    - match: pragmaticengineer
+      segment: 1-TechAI
+    - match: importai
+      segment: 1-TechAI
   # Which segments the downstream stages (split/enrich/compose) run on. Capture always takes everything.
   active: [1-TechAI]
 

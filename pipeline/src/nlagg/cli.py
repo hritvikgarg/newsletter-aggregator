@@ -5,6 +5,7 @@
   stats [--days N]              per-segment / per-sender counts, last sync runs
   split [--segment S ...|--all-segments] [--redo] [--limit N] [--id GMAIL_ID ...]
                                 M2: clean .md + story items for captured issues
+  reindex [--dry-run]           re-derive segment/source_key/is_issue from stored .eml (after rule changes)
   split-review [--segment S] [--n 20] [--out FILE]
                                 write a hand-check sheet for the M2 >=90% check
 """
@@ -59,8 +60,28 @@ def cmd_capture(cfg, a) -> int:
     return 1 if r.failed else 0
 
 
+def cmd_reindex(cfg, a) -> int:
+    from .reindex import run_reindex
+    r = run_reindex(cfg, dry_run=a.dry_run)
+    verb = "would change" if a.dry_run else "changed"
+    print(f"scanned={r.scanned} {verb}={r.changed} missing_file={r.missing_file}")
+    for k, n in sorted(r.moves.items(), key=lambda kv: -kv[1]):
+        print(f"  {k:<36} {n}")
+    return 0
+
+
 def cmd_stats(cfg, a) -> int:
     conn = db.connect(cfg.db_path)
+    if a.unmatched:
+        print("== unmatched mail by sender (who it is, which address it came to, a sample subject)")
+        for r in conn.execute(
+            """SELECT sender_name, sender_email, to_address, COUNT(*) n, MAX(subject) sample
+               FROM messages WHERE segment = 'unmatched'
+               GROUP BY sender_email, sender_name, to_address ORDER BY n DESC"""):
+            print(f"  {r['n']:>4}  {r['sender_name']} <{r['sender_email']}>  to={r['to_address']}")
+            print(f"        e.g. {(r['sample'] or '')[:90]}")
+        conn.close()
+        return 0
     cutoff = (datetime.now(timezone.utc) - timedelta(days=a.days)).isoformat()
     print(f"== messages per segment (all time | issues in last {a.days}d)")
     for r in conn.execute(
@@ -122,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("stats", help="counts per segment/sender + recent sync runs")
     s.add_argument("--days", type=int, default=14)
+    s.add_argument("--unmatched", action="store_true", help="list unmatched mail by sender + address")
+
+    ri = sub.add_parser("reindex", help="re-apply routing rules to already-captured mail (no download)")
+    ri.add_argument("--dry-run", action="store_true")
 
     sp = sub.add_parser("split", help="M2: clean + split captured issues into story items")
     sp.add_argument("--segment", action="append", help="segment id (repeatable); default: config segments.active")
@@ -140,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
-            "split": cmd_split, "split-review": cmd_split_review}[a.cmd](cfg, a)
+            "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

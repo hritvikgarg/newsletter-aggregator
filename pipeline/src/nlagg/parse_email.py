@@ -158,6 +158,24 @@ def visible_text(html: str | None, text: str | None) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
+def source_key(msg: EmailMessage, sender_email: str, sender_name: str) -> str | None:
+    """Stable key per *newsletter* (not per sender address).
+
+    One address can send several newsletters (dan@tldrnewsletter.com sends TLDR, TLDR AI and
+    TLDR Web Dev; newsletter@divenewsletter.com sends several Industry Dive titles), so the address
+    alone would undercount "how many sources covered this story". Use the List-Id when present,
+    otherwise the normalised display name, next to the address.
+    """
+    if not sender_email:
+        return None
+    lid = _header(msg, "List-Id")
+    m = re.search(r"<([^>]+)>", lid)
+    part = (m.group(1) if m else lid).strip().lower()
+    if not part:
+        part = re.sub(r"[^a-z0-9]+", " ", (sender_name or "").lower()).strip()
+    return f"{sender_email}|{part}" if part else sender_email
+
+
 def is_issue(subject: str, word_count: int) -> int:
     """0 only when the subject looks like welcome/confirm (or is empty) AND the body is short."""
     looks_like_admin = not subject.strip() or bool(CONFIRM_RE.search(subject))
@@ -186,7 +204,7 @@ def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: 
         "gmail_id": gmail_id,
         "thread_id": thread_id,
         "segment": route_segment(sender_email, tags, tag_to_segment, sender_overrides),
-        "source_key": sender_email or None,
+        "source_key": source_key(msg, sender_email, sender_name),
         "newsletter": None,          # mapped to sources.csv names later (sender -> newsletter table)
         "publisher": None,
         "sender_name": sender_name or sender_email,
