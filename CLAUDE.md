@@ -23,8 +23,9 @@ Live per-newsletter status is in `data/sources.csv`. Design is in `PHASE4_DESIGN
 - When a session did meaningful work, **append a note to `PROJECT_CONTEXT.md`** (Session Log) and
   include it in your PR (or push), so everyone sees what was discussed/decided.
 
-## Where things stand (2026-10-04)
+## Where things stand (2026-10-05)
 Phases 1–3 done (38/45 confirmed; see `sources.csv`). Pipeline code lives in **`pipeline/`** (Python `nlagg`):
-M0+M1 (capture Gmail → .eml + SQLite) merged; M2 (clean → .md, split issues into story items) in PR #2.
-Next: first real-inbox run + 20-email split check, then M3 (per-item LLM extraction, Groq/Qwen).
-Plan + milestones: `PROJECT_CONTEXT.md` §12. How to run: `pipeline/README.md`.
+M0–M2 done on real mail (3,179 captured; 1-TechAI split into ~2,300 items). M3–M7 code done (extract → cluster →
+compose with citation checker → approve/send → daily run). Blocked only on the owner adding `GROQ_API_KEY`
+and `delivery.recipients`; then first real draft + quality review, then schedule. LLM calls need normal internet
+(Windows), not the cloud workspace. Plan + milestones: `PROJECT_CONTEXT.md` §12. How to run: `pipeline/README.md`.

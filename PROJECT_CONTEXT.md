@@ -221,12 +221,12 @@ full paywalled text. Closest real competitor to study: Ground News.
 - **M2 ✅ code (PR #2) / ⏳ 20-email check** clean HTML → `.md` (tracking/pixels/footer stripped), sponsor +
   promo-mail detection, split issues into `items` (roundup, sectioned, essay = 1 item, teaser = 1 item → full-post URL).
   Done = ≥90% correct on 20 real TechAI emails via `nlagg split-review`.
-- **M3** per-item extraction with Groq (small model) / local Qwen; pydantic validation; cache by content_hash+prompt_version.
-- **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence;
+- **M3 ✅ code (2026-10-05)** per-item extraction with Groq (small model) / local Qwen; validation + grounding; cache.
+- **M4 ✅ code** TF-IDF + name overlap (decided 2026-10-05, no model download) → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence;
   resolve tracked links (once, cached) for the items that make it into stories.
-- **M5** compose: hook · top story · "Everyone's talking about" · quick hits · "Safe to skip" · close;
+- **M5 ✅ code** compose: hook · top story · "Everyone's talking about" · quick hits · "Safe to skip" · close;
   exemplar-based style prompt; **citation validator** (every sentence cites item ids; reject unknown names/numbers).
-- **M6** human approve → send to team only (Buttondown/Beehiiv later). **M7** daily schedule + source-health alerts.
+- **M6 ✅ code** human approve → Gmail SMTP to `delivery.recipients` (Buttondown/Beehiiv later). **M7 ✅ code** `run-daily` at 07:00 IST via Task Scheduler + source-health alerts.
 - **M8** more segments by config (Biz, GitHub next; News last).
 
 Still open from before:
@@ -252,6 +252,24 @@ This file is the durable memory across sessions and for the team. To keep it fre
 ---
 
 ## 14. SESSION LOG (append newest at top)
+
+### Session 2026-10-05 (b) — M3–M7 built, pushed straight to main (hritvik)
+- **Decided (hritvik):** owner's sessions push directly to `main` during the build (tests first; CLAUDE.md updated).
+  LLM = **Groq** free key (owner adds `GROQ_API_KEY` to `pipeline/.env`); clustering = **TF-IDF + name overlap**
+  (no model download); delivery = **Gmail SMTP** after `nlagg approve`; schedule = **daily 07:00 IST**.
+- Network facts: neither the cloud workspace nor the shell on hritvik's PC can reach api.groq.com or HuggingFace —
+  LLM steps run in Windows PowerShell / Task Scheduler (normal internet).
+- **M3** `extract`: per-item JSON (summary, category, importance, names, claims, numbers, quotes, topics); grounding
+  drops values not in the item text; cache; retries. Backlog would be ~1.1 M tokens (1,816 items) — daily window is
+  2 days (~25 items, ~13 k tokens).
+- **M4** `cluster`: tuned on 3 real 48 h windows — 10/10 multi-source stories correct; misses paraphrased
+  coverage (e.g. OpenAI Dots vs DevDay recap) until M3 summaries/names exist. One item per newsletter per story;
+  recurring sections never merge.
+- **M5** `compose` + citation validator; **M6** `approve`/`reject` (only path to recipients); **M7** `run-daily`
+  + health alerts by each newsletter's usual gap + `scripts/install_daily_task.ps1`.
+- Verified on the real archive (PC shell, no key): tests 100/100 (+2 need Gmail libs); dry-run, cluster and
+  run-daily work up to the LLM gate, which fails cleanly with "set GROQ_API_KEY".
+- **Next:** owner adds the Groq key + recipients → first real draft → review its quality → schedule.
 
 ### Session 2026-10-05 — M2 review sheet, second pass (hritvik, branch `hritvik/split-tuning-real-mail`)
 - Ran PR #6 code on the real archive (from the branch, before merging): 206 issues → 2,548 items, **382 sponsor (15%)**.

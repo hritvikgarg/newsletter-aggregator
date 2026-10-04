@@ -135,9 +135,13 @@ def test_daily_without_llm_key_reports_failure_but_finishes(cfg, tmp_path, monke
     assert "cluster" in r.steps and not r.ok
 
 
-def test_quiet_sources(cfg):
+def test_quiet_sources_uses_each_newsletters_rhythm(cfg):
     from tests.conftest import seed_items
-    seed_items(cfg, [{"key": f"k{i}", "sender": "Import AI", "gmail_id": f"m{i}", "title": "t", "body": "b",
-                      "sent": f"2026-09-{10 + i:02d}T07:00:00+00:00"} for i in range(4)])
-    q = quiet_sources(cfg, quiet_days=4, now=datetime.fromisoformat("2026-10-05T00:00:00+00:00"))
-    assert len(q) == 1 and "importai@example.com" in q[0]
+    now = datetime.fromisoformat("2026-10-05T00:00:00+00:00")
+    daily = [{"key": f"d{i}", "sender": "TLDR", "gmail_id": f"d{i}", "title": "t", "body": "b",
+              "sent": f"2026-09-{20 + i:02d}T07:00:00+00:00"} for i in range(6)]          # daily, quiet since 25th
+    weekly = [{"key": f"w{i}", "sender": "Import AI", "gmail_id": f"w{i}", "title": "t", "body": "b",
+               "sent": f"2026-09-{7 + 7 * i:02d}T07:00:00+00:00"} for i in range(4)]        # weekly, last 28th
+    seed_items(cfg, daily + weekly)
+    q = quiet_sources(cfg, quiet_days=4, now=now)
+    assert len(q) == 1 and "tldr@example.com" in q[0]          # the weekly one is on schedule

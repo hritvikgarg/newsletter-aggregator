@@ -7,11 +7,13 @@ own per-segment newsletter. Plan and task list: see **Pipeline plan** in `PROJEC
 |---|---|---|
 | M0 | Repo setup, config, DB schema v2 (items/stories/issues_out) | ✅ merged (PR #1) |
 | M1 | **Capture** Gmail → `.eml` + `messages` rows (no AI) | ✅ merged (PR #1) — needs a real-inbox run |
-| M2 | **Clean** HTML → `.md` + **split** each issue into story `items` (no AI) | ✅ code (PR #2) — needs the 20-email check |
-| M3 | Per-item LLM extraction (Groq / local Qwen — never Claude) | |
-| M4 | Cluster items across sources into `stories` (consensus / divergence) | |
-| M5 | Compose our issue (template + exemplar prompt + citation validator) | |
-| M6–M8 | Review & deliver, schedule & monitor, more segments | |
+| M2 | **Clean** HTML → `.md` + **split** each issue into story `items` (no AI) | ✅ tuned on real mail (owner check pending) |
+| M3 | Per-item LLM extraction (Groq / local Qwen — never Claude) | ✅ code — needs `GROQ_API_KEY` |
+| M4 | Cluster items across sources into `stories` (consensus / divergence) | ✅ tuned on real mail |
+| M5 | Compose our issue (template + exemplar prompt + citation validator) | ✅ code — needs `GROQ_API_KEY` |
+| M6 | Human approve → email to the team | ✅ code — needs `delivery.recipients` |
+| M7 | Daily run + source-health alerts (Windows Task Scheduler) | ✅ code — `scripts/install_daily_task.ps1` |
+| M8 | More segments by config | |
 
 First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Capture always takes everything.
 
@@ -20,7 +22,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 72 tests, no network needed
+pytest -q                                               # 102 tests, no network needed
 ```
 
 ## Capture (M1)
@@ -114,6 +116,36 @@ target ≥ 90% OK. Fixtures cover the five shapes, but rules must be tuned on re
 
 Layout: `data/archive/<segment>/<YYYY-MM-DD>/<sender-slug>__<gmail_id>.eml` — kept local (copyrighted content).
 
+## Daily pipeline (M3–M7)
+One-time setup: put `GROQ_API_KEY=...` in `pipeline\.env` (free key: console.groq.com; never Claude), and in
+`config.yaml` set `delivery.recipients` (who gets the issue) and optionally `delivery.owner` (gets "draft ready").
+```bash
+python -m nlagg extract --dry-run          # how many items / tokens the LLM step would use
+python -m nlagg extract                    # M3: items of the last 3 days -> summary, names, numbers, quotes
+python -m nlagg cluster                    # M4: last 48 h -> stories; agree/differ for 2+ newsletters
+python -m nlagg compose                    # M5: today's draft -> pipeline/out/issues/<segment>/<date>.html/.md
+python -m nlagg issues                     # list drafts / sent issues
+python -m nlagg approve --dry-run          # M6: who would get it
+python -m nlagg approve                    # M6: send the latest draft (the ONLY way anything is sent)
+python -m nlagg reject --reason "..."      # its stories can be used again tomorrow
+python -m nlagg run-daily                  # M7: capture -> split -> extract -> cluster -> compose -> health
+.\scripts\install_daily_task.ps1          # M7: schedule run-daily at 07:00 (PowerShell, from pipeline\)
+```
+- **M3 extract** keeps only what the source wrote: names, numbers and quotes the model returns are dropped unless
+  they appear in the item text. Replies are cached (`llm_cache`); failed items retry next run. Long essays are cut
+  to 1,800 words. The client waits ~2.5 s between calls (Groq free tier).
+- **M4 cluster**: TF-IDF over title + summary + names (IDF from the segment's recent items) plus name overlap;
+  one item per newsletter per story; recurring sections ("Treats to Try", seen in ≥ 3 issues) stay alone.
+  Salience = distinct newsletters. Stories with 2+ newsletters get "sources agree / differ" points from the
+  write model, each citing items and checked against them.
+- **M5 compose**: top story, *Everyone's talking about* (2+ newsletters), quick hits, *Safe to skip*. Every factual
+  sentence must cite `[iN]`; the checker rejects uncited sentences, unknown ids, numbers or names not in the cited
+  item, and 11+ copied words; one retry, then failing sentences are dropped (listed in `nlagg issues`). Citations
+  become links named after the newsletter; click-trackers are resolved once (cached). Items used in an earlier
+  issue are not reused.
+- **M7 run-daily** never sends: it leaves a draft and (if `delivery.owner` is set) emails the owner the step
+  summary + alerts. Health alert = a picked newsletter silent for longer than 2.5× its usual gap (min 4 days).
+
 ## Code map
 ```
 src/nlagg/
@@ -126,9 +158,17 @@ src/nlagg/
   clean.py         M2: HTML -> blocks, link canonicalisation, boilerplate/footer removal, markdown
   split.py         M2: blocks -> story items (roundup / essay / teaser), sponsor + promo rules
   split_run.py     M2 orchestration + split-review sheet
+  llm.py           OpenAI-compatible client (Groq/Ollama), JSON mode, retries, cache; refuses Claude
+  extract.py       M3 per-item extraction + grounding check
+  cluster.py       M4 stories (TF-IDF + names), consensus/divergence
+  links.py         resolve click-trackers once (cached)
+  compose.py       M5 issue + citation validator + md/html rendering
+  deliver.py       M6 approve / reject / email
+  daily.py         M7 daily run + health
+  prompts/, templates/   extract/compose prompts, email HTML template
   cli.py           `python -m nlagg ...`
 tests/             synthetic emails, fake Gmail API / IMAP servers, fixtures/ per newsletter shape
-prompts/, templates/  added in M3/M5
+scripts/install_daily_task.ps1   Windows Task Scheduler (07:00 daily)
 ```
 
 ## Known gaps (tracked for next PRs)

@@ -32,19 +32,32 @@ class DailyResult:
         return not any(v.startswith("failed") for v in self.steps.values())
 
 
-def quiet_sources(cfg: Config, quiet_days: int = 4, lookback_days: int = 30, now: datetime | None = None) -> list[str]:
-    """Newsletters (sender) of the active segments that sent issues in the last month but none recently."""
+def quiet_sources(cfg: Config, quiet_days: int = 4, lookback_days: int = 45, now: datetime | None = None) -> list[str]:
+    """Picked newsletters that went quiet: no issue for longer than max(quiet_days, 2.5 x its usual gap).
+    The usual gap is the median time between its issues, so weeklies don't raise false alarms."""
     now = now or datetime.now(timezone.utc)
     conn = db.connect(cfg.db_path)
     segs = cfg.active_segments or ["1-TechAI"]
-    rows = conn.execute(
-        f"""SELECT segment, sender_email, MAX(sent_date) last, COUNT(*) n FROM messages
-            WHERE is_issue = 1 AND segment IN ({','.join('?' * len(segs))}) AND sent_date >= ?
-            GROUP BY segment, sender_email""", (*segs, (now - timedelta(days=lookback_days)).isoformat())).fetchall()
+    by_src: dict[tuple[str, str], list[datetime]] = {}
+    for r in conn.execute(
+            f"""SELECT segment, sender_email, sent_date FROM messages
+                WHERE is_issue = 1 AND duplicate_of IS NULL AND segment IN ({','.join('?' * len(segs))})
+                  AND sent_date >= ?""", (*segs, (now - timedelta(days=lookback_days)).isoformat())):
+        by_src.setdefault((r["segment"], r["sender_email"]), []).append(datetime.fromisoformat(r["sent_date"]))
     conn.close()
-    cutoff = (now - timedelta(days=quiet_days)).isoformat()
-    return [f"{r['segment']}: {r['sender_email']} — nothing since {r['last'][:10]} ({r['n']} issues in {lookback_days} d)"
-            for r in rows if r["last"] < cutoff and r["n"] >= 3]
+    out = []
+    for (seg, sender), dates in sorted(by_src.items()):
+        if len(dates) < 3:
+            continue
+        dates.sort()
+        gaps = sorted((b - a).total_seconds() / 86400 for a, b in zip(dates, dates[1:]))
+        usual = gaps[len(gaps) // 2]
+        allowed = max(float(quiet_days), 2.5 * usual)
+        silent = (now - dates[-1]).total_seconds() / 86400
+        if silent > allowed:
+            out.append(f"{seg}: {sender} — nothing for {silent:.0f} days (usually every {usual:.1f} d), "
+                       f"last {dates[-1]:%Y-%m-%d}")
+    return out
 
 
 def run_daily(cfg: Config, *, backend=None, client=None, now: datetime | None = None, smtp_factory=None,
