@@ -13,7 +13,7 @@ FIX = Path(__file__).parent / "fixtures"
 def techai_box():
     def mk(name, subject, frm):
         return make_eml(frm=frm, to="notifyy1008+techai@gmail.com", delivered_to="notifyy1008+techai@gmail.com",
-                        subject=subject, text=None, html=(FIX / f"{name}.html").read_text())
+                        subject=subject, text=None, html=(FIX / f"{name}.html").read_text(encoding="utf-8"))
     return {
         "19a0000000000001": mk("roundup_tldr", "OpenAI ships agents", "TLDR AI <dan@tldrnewsletter.com>"),
         "19a0000000000002": mk("essay_diff", "The Economics of Inference", "The Diff <byrne@thediff.co>"),
@@ -23,7 +23,7 @@ def techai_box():
                                      subject="50% off TLDR Pro — last chance", html="<p>Upgrade today.</p>"),
         "19a0000000000005": make_eml(frm="Morning Brew <crew@morningbrew.com>", to="notifyy1008@gmail.com",
                                      subject="☕ Fed holds", text=None,
-                                     html=(FIX / "sectioned_brew.html").read_text()),   # 2-BizFinance
+                                     html=(FIX / "sectioned_brew.html").read_text(encoding="utf-8")),   # 2-BizFinance
     }
 
 
@@ -58,7 +58,7 @@ def test_split_end_to_end(cfg, fake_backend_cls):
     assert {l["link_type"] for l in sponsor_links} == {"sponsor"}
 
     md = cfg.archive_dir / msgs["19a0000000000001"]["clean_text_path"]
-    assert md.suffix == ".md" and "OpenAI launches Agents SDK" in md.read_text()
+    assert md.suffix == ".md" and "OpenAI launches Agents SDK" in md.read_text(encoding="utf-8")
 
 
 def test_split_is_idempotent_and_redo_replaces(cfg, fake_backend_cls):
@@ -99,7 +99,7 @@ def test_review_sheet(cfg, fake_backend_cls, tmp_path):
     run_split(cfg, segments=["1-TechAI"])
     out = tmp_path / "review.md"
     assert write_review(cfg, out, segment="1-TechAI", n=20) == 4
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "Target: ≥ 90% OK" in text and "[SPONSOR]" in text and "shape **teaser**" in text
     assert "- [ ] OK" in text
 
@@ -108,7 +108,7 @@ def test_migrates_v2_database(cfg):
     """A DB created by M1 (schema v2) gets the new M2 columns without losing rows."""
     cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(cfg.db_path)
-    c.executescript((FIX / "schema_v2.sql").read_text())      # exact schema shipped in PR #1
+    c.executescript((FIX / "schema_v2.sql").read_text(encoding="utf-8"))      # exact schema shipped in PR #1
     c.executescript("INSERT INTO messages (gmail_id, segment) VALUES ('old1', '1-TechAI');"
                     "PRAGMA user_version = 2;")
     c.close()

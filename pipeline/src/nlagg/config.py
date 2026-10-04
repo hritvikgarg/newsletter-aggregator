@@ -32,7 +32,8 @@ def _load_dotenv(path: Path) -> None:
     """Minimal .env loader (KEY=VALUE lines); never overrides real env vars."""
     if not path.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig: Windows Notepad may save with a BOM, which would otherwise corrupt the first key
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

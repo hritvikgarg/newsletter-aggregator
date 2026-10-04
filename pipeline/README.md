@@ -20,7 +20,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 46 tests, no network needed
+pytest -q                                               # 47 tests, no network needed
 ```
 
 ## Capture (M1)

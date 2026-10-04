@@ -28,7 +28,7 @@ def test_canonical_url(raw, expected, kind):
 
 
 def test_hidden_preheader_pixels_and_styles_removed():
-    blocks = html_to_blocks((FIX / "roundup_tldr.html").read_text())
+    blocks = html_to_blocks((FIX / "roundup_tldr.html").read_text(encoding="utf-8"))
     text = " ".join(b.text for b in blocks)
     assert "OpenAI ships agents, Nvidia beats" not in text      # display:none preheader
     assert "font-family" not in text                            # <style>
@@ -36,7 +36,7 @@ def test_hidden_preheader_pixels_and_styles_removed():
 
 
 def test_block_signals():
-    blocks = html_to_blocks((FIX / "roundup_tldr.html").read_text())
+    blocks = html_to_blocks((FIX / "roundup_tldr.html").read_text(encoding="utf-8"))
     title = next(b for b in blocks if b.text.startswith("OpenAI launches"))
     assert title.link_full and title.bold_full and title.lead_link_frac == 1.0
     assert title.links[0].url == "https://openai.com/index/agents-sdk"
@@ -45,7 +45,7 @@ def test_block_signals():
 
 
 def test_boilerplate_and_footer_cut():
-    blocks = clean((FIX / "roundup_tldr.html").read_text(), None)
+    blocks = clean((FIX / "roundup_tldr.html").read_text(encoding="utf-8"), None)
     texts = [b.text for b in blocks]
     assert not any(t.startswith("View Online") for t in texts)
     assert not any("unsubscribe" in t.lower() for t in texts)
@@ -68,7 +68,7 @@ def test_text_only_fallback():
 
 
 def test_markdown_render():
-    md = to_markdown(clean((FIX / "sectioned_brew.html").read_text(), None))
+    md = to_markdown(clean((FIX / "sectioned_brew.html").read_text(encoding="utf-8"), None))
     assert "## The Fed holds steady, stocks don't" in md
     assert "<https://www.cnbc.com/2026/10/01/fed-decision.html>" in md
     assert "Unsubscribe" not in md

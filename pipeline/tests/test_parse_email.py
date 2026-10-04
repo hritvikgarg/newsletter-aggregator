@@ -62,3 +62,16 @@ def test_platform_substack():
     from tests.conftest import make_eml
     m = parse_raw(make_eml(frm="a@b.c", to="x@y.z", subject="s", headers={"List-Id": "<foo.substack.com>"}))
     assert detect_platform(m) == "substack"
+
+
+def test_dotenv_with_bom_and_quotes(tmp_path, monkeypatch):
+    """Windows Notepad can save .env with a UTF-8 BOM; the first key must still load."""
+    from nlagg.config import _load_dotenv
+    monkeypatch.delenv("NLAGG_TEST_USER", raising=False)
+    monkeypatch.delenv("NLAGG_TEST_PW", raising=False)
+    env = tmp_path / ".env"
+    env.write_bytes("\ufeffNLAGG_TEST_USER=me@example.com\r\n# comment\r\nNLAGG_TEST_PW=\"abcd efgh\"\r\n".encode("utf-8"))
+    _load_dotenv(env)
+    import os
+    assert os.environ["NLAGG_TEST_USER"] == "me@example.com"
+    assert os.environ["NLAGG_TEST_PW"] == "abcd efgh"
