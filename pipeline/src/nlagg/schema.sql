@@ -4,6 +4,7 @@
 --             split_status, capture_backend
 --   items / stories / story_items / issues_out  (story-level analysis + our generated issues)
 -- v3 (M2): messages.is_promo/split_shape/split_error, items.kind/word_count.
+-- v5 (M3-M5): llm_cache, link_resolution, stories.score/window_end.
 -- Applied idempotently; PRAGMA user_version tracks the schema version; db.py adds
 -- missing columns to databases created by an older version.
 
@@ -101,7 +102,9 @@ CREATE TABLE IF NOT EXISTS stories (
   source_count  INTEGER,          -- distinct source_key covering it (salience)
   consensus     TEXT,             -- JSON: facts all sources agree on
   divergence    TEXT,             -- JSON: where sources differ
-  created_at    TEXT
+  created_at    TEXT,
+  score         REAL,             -- v5: ranking for compose (sources + importance)
+  window_end    TEXT              -- v5: end of the clustering window this story was built in
 );
 CREATE TABLE IF NOT EXISTS story_items (
   story_id INTEGER REFERENCES stories(id),
@@ -126,8 +129,25 @@ CREATE TABLE IF NOT EXISTS issues_out (
   UNIQUE (segment, issue_date)
 );
 
+-- ---------------------------------------------------------------- v5: LLM cache + resolved links
+CREATE TABLE IF NOT EXISTS llm_cache (
+  key            TEXT PRIMARY KEY,     -- sha256(model, prompt_version, temperature, messages)
+  model          TEXT,
+  prompt_version TEXT,
+  response       TEXT,                 -- parsed JSON reply
+  created_at     TEXT
+);
+CREATE TABLE IF NOT EXISTS link_resolution (
+  url         TEXT PRIMARY KEY,        -- opaque click-tracker (beehiiv / Substack / ConvertKit ...)
+  final_url   TEXT,                    -- destination after redirects (NULL = could not resolve)
+  status      TEXT,                    -- ok | failed
+  resolved_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_msg_segment ON messages(segment);
 CREATE INDEX IF NOT EXISTS idx_msg_date    ON messages(sent_date);
 CREATE INDEX IF NOT EXISTS idx_msg_split   ON messages(split_status);
 CREATE INDEX IF NOT EXISTS idx_msg_enrich  ON messages(enrich_status);
 CREATE INDEX IF NOT EXISTS idx_items_seg_date ON items(segment, sent_date);
+CREATE INDEX IF NOT EXISTS idx_story_items_item ON story_items(item_id);
+CREATE INDEX IF NOT EXISTS idx_entities_item ON entities(item_id);

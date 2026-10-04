@@ -8,6 +8,8 @@
   reindex [--dry-run]           re-derive segment/source_key/is_issue from stored .eml (after rule changes)
   split-review [--segment S] [--n 20] [--out FILE]
                                 write a hand-check sheet for the M2 >=90% check
+  extract [--days 3] [--limit N] [--redo] [--dry-run] [--item ID ...]
+                                M3: per-item LLM extraction (Groq / local Qwen — never Claude)
 """
 from __future__ import annotations
 
@@ -125,6 +127,21 @@ def cmd_split_review(cfg, a) -> int:
     return 0
 
 
+def cmd_extract(cfg, a) -> int:
+    from .extract import run_extract
+    r = run_extract(cfg, days=a.days, segments=a.segment, redo=a.redo, limit=a.limit,
+                    item_ids=a.items, dry_run=a.dry_run)
+    if a.dry_run:
+        print(f"would extract {r.selected} items (~{r.tokens:,} tokens)")
+        return 0
+    print(f"extracted {r.done}/{r.selected} items  failed={r.failed} short={r.skipped_short} "
+          f"ungrounded_values_dropped={r.dropped_values}  api_calls={r.api_calls} cache_hits={r.cache_hits} "
+          f"tokens={r.tokens:,}")
+    for e in r.errors[:10]:
+        print("  ERROR", e, file=sys.stderr)
+    return 1 if r.failed and not r.done else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nlagg", description="Newsletter aggregator pipeline")
     p.add_argument("--config", type=Path, help="path to config.yaml (default: pipeline/config.yaml)")
@@ -160,12 +177,21 @@ def main(argv: list[str] | None = None) -> int:
     rv.add_argument("--n", type=int, default=20)
     rv.add_argument("--out", type=Path)
 
+    ex = sub.add_parser("extract", help="M3: per-item LLM extraction")
+    ex.add_argument("--days", type=float, default=3, help="only items sent in the last N days (0 = all)")
+    ex.add_argument("--segment", action="append")
+    ex.add_argument("--limit", type=int)
+    ex.add_argument("--redo", action="store_true", help="re-extract items already done with this prompt version")
+    ex.add_argument("--item", dest="items", type=int, action="append", help="only this item id (repeatable)")
+    ex.add_argument("--dry-run", action="store_true", help="count items + estimate tokens, no API calls")
+
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
-            "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex}[a.cmd](cfg, a)
+            "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
+            "extract": cmd_extract}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

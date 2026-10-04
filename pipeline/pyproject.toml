@@ -27,7 +27,7 @@ nlagg = "nlagg.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-nlagg = ["schema.sql"]
+nlagg = ["schema.sql", "prompts/*.md", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

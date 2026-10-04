@@ -115,3 +115,47 @@ def write_box(folder: Path, box: dict[str, bytes]) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     for gid, raw in box.items():
         (folder / f"export__{gid}.eml").write_bytes(raw)
+
+
+# ---------------------------------------------------------------- M3+ helpers
+def seed_items(cfg, stories: list[dict]) -> dict[str, int]:
+    """Insert messages + items directly. Each story dict: key, sender, title, body, sent (ISO), [gmail_id,
+    position, is_sponsor, kind, url, segment]. Returns {key: item_id}."""
+    from nlagg import db
+    conn = db.connect(cfg.db_path)
+    ids = {}
+    for n, s in enumerate(stories):
+        gid = s.get("gmail_id", f"g{n:04d}")
+        sender = s["sender"]
+        email = sender.lower().replace(" ", "") + "@example.com"
+        conn.execute(
+            """INSERT OR IGNORE INTO messages (gmail_id, segment, source_key, sender_name, sender_email, subject,
+                                               sent_date, is_issue, split_status, is_promo)
+               VALUES (?,?,?,?,?,?,?,1,'done',0)""",
+            (gid, s.get("segment", "1-TechAI"), f"{email}|{sender.lower()}", sender, email,
+             s.get("subject", f"{sender} daily"), s["sent"]))
+        cur = conn.execute(
+            """INSERT INTO items (gmail_id, position, section, title, body, url, is_sponsor, kind, word_count,
+                                  segment, source_key, sent_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (gid, s.get("position", n + 1), s.get("section"), s["title"], s["body"],
+             s.get("url", f"https://news.example/{n}"), s.get("is_sponsor", 0), s.get("kind", "story"),
+             len((s["title"] + " " + s["body"]).split()), s.get("segment", "1-TechAI"),
+             f"{email}|{sender.lower()}", s["sent"]))
+        ids[s["key"]] = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return ids
+
+
+class FakeChat:
+    """Stands in for ChatClient: returns replies from a function of (model, messages)."""
+
+    def __init__(self, reply):
+        self.reply, self.calls, self.cache_hits, self.tokens, self.conn = reply, [], 0, 0, None
+
+    def chat_json(self, model, messages, **kw):
+        self.calls.append((model, messages))
+        r = self.reply(model, messages)
+        if isinstance(r, Exception):
+            raise r
+        return r
