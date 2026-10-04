@@ -4,7 +4,7 @@
 > every decision made, current status, how things work, and what's next. Read this top-to-bottom
 > to get fully up to speed. A running **Session Log** at the bottom records each work session.
 >
-> **Last updated:** 2026-08-07 · **Maintainer:** tdsworks@gmail.com
+> **Last updated:** 2026-10-04 · **Maintainer:** tdsworks@gmail.com
 
 ---
 
@@ -18,13 +18,13 @@ sources rather than depending on any single one.
 
 ---
 
-## 2. Current status snapshot (2026-08-07)
-- **Phase 1–3 essentially complete.** Subscriptions live and verified via the Gmail API.
-- **~39–41 of 45 newsletters active** (delivering real issues). 4 are dead (can't subscribe).
-- **Gmail API read access is set up and working** (OAuth, read-only, via the `google-skill` tool).
-- **Phase 4 (archive) is designed + proven on 1 email**; not yet built as a full script.
-- **Phase 5 (LLM enrichment) is designed** (LLM-agnostic; Groq/Qwen, NOT Claude).
+## 2. Current status snapshot (2026-10-04)
+- **Phase 1–3 complete.** 38/45 confirmed delivering, 3 pending, 4 dropped (`data/sources.csv`).
+- **Gmail API read access is set up and working** (OAuth, read-only, via the `google-skill` tool) on the original machine.
+- **Phase 4 capture code is built** (`pipeline/`, M1: Gmail → .eml + SQLite, tested); first real-inbox run pending.
+- **Phase 5 (LLM enrichment) is designed** (LLM-agnostic; Groq/Qwen, NOT Claude); per-item, not per-email (schema v2).
 - **Product strategy for the News segment** has been explored in depth (USP, techniques, sample issues).
+- **Pipeline plan M0–M8** is in §12; first segment end-to-end is 1-TechAI.
 
 ---
 
@@ -34,7 +34,7 @@ sources rather than depending on any single one.
 | 1 — Curate | Research + pick 45 newsletters, 9 segments | ✅ Done |
 | 2 — Gmail infra | Dedicated Gmail, +tag addresses, 9 filters + labels, sender-filters | ✅ Done |
 | 3 — Subscribe & verify | Sign up all 45, confirm, live-verify via Gmail API | ✅ ~Done |
-| 4 — Archive/ingestion | Scrape Gmail → .eml + .md + SQLite index; daily auto-sync | 🔜 Designed, 1-email proof done |
+| 4 — Archive/ingestion | Scrape Gmail → .eml + .md + SQLite index; daily auto-sync | 🟡 Capture code built (`pipeline/`, M1) — needs first real-inbox run |
 | 5 — LLM enrichment | Non-Claude LLM extracts claims/quotes/entities etc. → DB | ⏳ Designed |
 | 6 — Digest product | Compose our own per-segment newsletter from the archive | ⏳ Strategy explored |
 
@@ -206,21 +206,34 @@ full paywalled text. Closest real competitor to study: Ground News.
 | `gmail_filters.xml` / `gmail_filters_sender.xml` / `gmail_filter_lawfare.xml` | Importable Gmail filters |
 | `tools/google-skill/` | Cloned Gmail-API tool (auth + list/read). Secrets are local, not committed. |
 | `data/archive/` | The newsletter archive (.eml + .md by segment/date). 1 proof file so far. |
-| `scripts/*` (phase2*, debug_ktn*) | KTN-era Python/Playwright — OBSOLETE, kept for reference |
+| `pipeline/` | **The pipeline code** (Python pkg `nlagg`): capture now; split/enrich/cluster/compose next. See `pipeline/README.md` |
+| `legacy/ktn/` | KTN-era Python/Playwright — OBSOLETE, kept for reference |
+| `scripts/session_log.py` | SessionEnd hook that appends to this file's Session Log |
 
 ---
 
 ## 12. Open questions / next steps
-1. Build the **Phase 4 capture script** (polished text cleaner that strips tracking URLs + separate
-   links/images tables + SQLite writes) and run a full backfill of the inbox.
-2. Set up the **daily auto-sync** (scheduler) — time TBD (~late morning after dailies land).
-3. Pick the **Phase 5 LLM** (Groq to start vs. local Qwen) and wire enrichment.
-4. Finalize the **News digest template** (from Sample A) + the AI prompts for each section.
-5. Decide whether to **trim bonus subscriptions** (many Guardian/Semafor editions, Substack recs inflate
-   News/HR/SmallCap volume).
-6. Confirm the 2 pending manual steps (RedChip code, Bootstrapped Founder confirm) actually completed.
+**Pipeline plan (2026-10-04)** — milestones, each a small PR. First segment end-to-end: **1-TechAI**
+(5/5 confirmed, 3 overlapping dailies → clustering testable fast, lower paywall risk than News).
+- **M0 ✅** repo setup, `pipeline/` package, config, schema v2 (items/stories/issues_out).
+- **M1 ✅ code / ⏳ real run** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
+  → Run `python -m nlagg capture` on the machine with Gmail auth; check `nlagg stats` vs Gmail label counts.
+- **M2** clean HTML (strip tracking/pixels), sponsor **and promo-mail** detection, split issues into `items`
+  (roundups first, then sectioned briefs, essays = 1 item, teasers → fetch "read online"). Done = ≥90% correct on 20 TechAI emails.
+- **M3** per-item extraction with Groq (small model) / local Qwen; pydantic validation; cache by content_hash+prompt_version.
+- **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence.
+- **M5** compose: hook · top story · "Everyone's talking about" · quick hits · "Safe to skip" · close;
+  exemplar-based style prompt; **citation validator** (every sentence cites item ids; reject unknown names/numbers).
+- **M6** human approve → send to team only (Buttondown/Beehiiv later). **M7** daily schedule + source-health alerts.
+- **M8** more segments by config (Biz, GitHub next; News last).
 
----
+Still open from before:
+1. Pick the Phase 5 LLM for real (Groq to start vs local Qwen).
+2. Build a sender → newsletter map (`data/senders.csv`) from the first real `nlagg stats` run.
+3. Decide whether to trim bonus subscriptions (Guardian/Semafor editions, Substack recs inflate volume).
+4. Confirm the 2 pending manual steps (RedChip code, Bootstrapped Founder confirm).
+5. **Scheduled runs:** OAuth app in "Testing" → refresh token expires ~7 days. Use IMAP + App Password
+   for the scheduled job, or publish the OAuth app.
 
 ## 13. How this file stays current (the "auto-save context" ask)
 This file is the durable memory across sessions and for the team. To keep it fresh:
@@ -234,6 +247,20 @@ This file is the durable memory across sessions and for the team. To keep it fre
 ---
 
 ## 14. SESSION LOG (append newest at top)
+
+### Session 2026-10-04 — Pipeline plan + M0/M1 (hritvik, branch `hritvik/pipeline-m0-m1`)
+- Reviewed repo + 7 reference repos (run-llama, projectgreenhat, AI-Weekly-Digest, news-digest, asadcs, …).
+  Borrowed: exemplar style prompts, tool-vs-LLM split, link verification, draft-first delivery, Actions scheduling.
+- **Decisions:** build in this repo (no new repo); Python pipeline in `pipeline/`; **story item** (not email) is the
+  unit of analysis; start with **1-TechAI**; small model for extraction, big model only for writing; citation validator.
+- **M0:** `pipeline/` package (`nlagg`), `config.yaml`, `.env.example`, schema v2 (see PHASE4_DESIGN.md "v2 additions");
+  KTN scripts → `legacy/ktn/`; RESUME.md replaced with a pointer.
+- **M1:** capture implemented — Gmail API (reuses google-skill token), IMAP (App Password), and .eml-folder backends;
+  same hex gmail_id in all; idempotent; incremental with 3-day overlap; sender-override + `+tag` routing; is_issue;
+  platform detection; `sync_log`; `nlagg stats` source-health view. 17 tests (fake Gmail API/IMAP), all passing.
+- **Not done:** no run against the real inbox yet (needs the machine with Gmail auth).
+- **Decided (hritvik):** canonical repo is **`hritvikgarg/newsletter-aggregator`** (CONTRIBUTING.md updated);
+  `is_issue = 0` needs a welcome/confirm subject **and** < 250 words; promo-mail detection deferred to M2.
 
 ### Session 2026-08-06/07 — Setup verification, Gmail API, archive design, product strategy
 - Pivoted fully from KTN → Gmail +tags (done earlier); this session focused on verification + design.

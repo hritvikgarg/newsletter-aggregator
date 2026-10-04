@@ -8,6 +8,7 @@ tools/google-skill/.claude/
 *.env
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 *.keys.json
@@ -49,3 +50,10 @@ Thumbs.db
 .idea/
 .vscode/
 scratchpad/
+
+# ============================================================
+#  Pipeline outputs (generated issues are regenerable)
+# ============================================================
+pipeline/out/
+*.egg-info/
+.pytest_cache/

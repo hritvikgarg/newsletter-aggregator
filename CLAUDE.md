@@ -21,7 +21,7 @@ Live per-newsletter status is in `data/sources.csv`. Design is in `PHASE4_DESIGN
 - When a session did meaningful work, **append a note to `PROJECT_CONTEXT.md`** (Session Log) and
   include it in your PR, so everyone sees what was discussed/decided.
 
-## Where things stand (2026-08-07)
-Phases 1–3 done (~35 newsletters confirmed delivering; see `sources.csv`). Phase 4 (archive:
-SQLite + .eml + .md) designed + proven on one email. Phase 5 (LLM enrichment) designed. Next:
-build the capture script + backfill, then the digest. Full detail in `PROJECT_CONTEXT.md`.
+## Where things stand (2026-10-04)
+Phases 1–3 done (38/45 confirmed; see `sources.csv`). Pipeline code lives in **`pipeline/`** (Python `nlagg`):
+M0 setup + M1 capture (Gmail → .eml + SQLite) built and tested; next is M2 (split issues into story items).
+Plan + milestones: `PROJECT_CONTEXT.md` §12. How to run: `pipeline/README.md`.

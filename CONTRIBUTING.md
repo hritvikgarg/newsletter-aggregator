@@ -32,7 +32,8 @@ One PR = one focused change. Keep them small so they're easy to review.
 - Approve & **Merge** (or request changes). That's the review.
 
 ## First-time setup (each machine)
-1. `git clone https://github.com/KavyaJain321/newsletter-aggregator.git`
+1. `git clone https://github.com/hritvikgarg/newsletter-aggregator.git`  
+   (canonical repo since 2026-10-04; the older `KavyaJain321/newsletter-aggregator` copy is no longer the main one)
 2. Read **`PROJECT_CONTEXT.md`** top-to-bottom — it's the full handoff.
 3. Gmail access is **per-machine** and NOT in the repo (secrets are gitignored). If you need to
    read the inbox, set up your own Gmail auth (see `PROJECT_CONTEXT.md` §6). Note: **Gmail-dependent
