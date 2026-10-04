@@ -14,6 +14,10 @@
                                 M4: group items into stories; consensus vs divergence for multi-source stories
   compose [--segment S] [--date YYYY-MM-DD] [--no-resolve] [--force]
                                 M5: write our issue (draft) -> pipeline/out/issues/<segment>/<date>.md/.html
+  issues [--segment S]          list our issues (draft / approved / sent / rejected)
+  approve [--date D] [--dry-run]  M6: approve the latest draft and email it to delivery.recipients
+  reject [--date D] [--reason R]  M6: reject a draft (its stories can be used again)
+  run-daily [--skip-capture]    M7: capture -> split -> extract -> cluster -> compose (draft) + health check
 """
 from __future__ import annotations
 
@@ -171,6 +175,44 @@ def cmd_compose(cfg, a) -> int:
     return 0
 
 
+def cmd_issues(cfg, a) -> int:
+    conn = db.connect(cfg.db_path)
+    seg = a.segment or (cfg.active_segments[0] if cfg.active_segments else "1-TechAI")
+    import json as _json
+    for r in conn.execute("SELECT * FROM issues_out WHERE segment = ? ORDER BY issue_date DESC LIMIT 20", (seg,)):
+        rep = _json.loads(r["validator_report"] or "{}")
+        print(f"  {r['issue_date']}  {r['status']:<9} {rep.get('subject', '')[:60]:<60}  "
+              f"dropped={len(rep.get('problems_dropped', []))}  {r['html_path']}")
+    conn.close()
+    return 0
+
+
+def cmd_approve(cfg, a) -> int:
+    from .deliver import approve
+    r = approve(cfg, segment=a.segment, issue_date=a.date, dry_run=a.dry_run)
+    print(r.message)
+    return 0 if r.status in ("approved", "sent", "draft") else 1
+
+
+def cmd_reject(cfg, a) -> int:
+    from .deliver import reject
+    print(reject(cfg, segment=a.segment, issue_date=a.date, reason=a.reason or "").message)
+    return 0
+
+
+def cmd_run_daily(cfg, a) -> int:
+    from .daily import run_daily
+    r = run_daily(cfg, skip_capture=a.skip_capture)
+    for k, v in r.steps.items():
+        print(f"  {k:<8} {v}")
+    for al in r.alerts:
+        print(f"  ALERT {al}")
+    if r.issue_path:
+        print(f"draft: {r.issue_path}\napprove + send: python -m nlagg approve")
+    print(f"log: {r.log_path}")
+    return 0 if r.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nlagg", description="Newsletter aggregator pipeline")
     p.add_argument("--config", type=Path, help="path to config.yaml (default: pipeline/config.yaml)")
@@ -226,13 +268,27 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--no-resolve", action="store_true", help="don't resolve click-tracker links")
     co.add_argument("--force", action="store_true", help="recompose even if already approved/sent")
 
+    li = sub.add_parser("issues", help="list our issues")
+    li.add_argument("--segment")
+    ap = sub.add_parser("approve", help="M6: approve a draft and email it to delivery.recipients")
+    ap.add_argument("--segment")
+    ap.add_argument("--date", help="issue date (default: latest draft)")
+    ap.add_argument("--dry-run", action="store_true", help="show who would get it, send nothing")
+    rj = sub.add_parser("reject", help="M6: reject a draft")
+    rj.add_argument("--segment")
+    rj.add_argument("--date")
+    rj.add_argument("--reason")
+    rd = sub.add_parser("run-daily", help="M7: the whole daily pipeline (draft only)")
+    rd.add_argument("--skip-capture", action="store_true")
+
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
             "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
-            "extract": cmd_extract, "cluster": cmd_cluster, "compose": cmd_compose}[a.cmd](cfg, a)
+            "extract": cmd_extract, "cluster": cmd_cluster, "compose": cmd_compose,
+            "issues": cmd_issues, "approve": cmd_approve, "reject": cmd_reject, "run-daily": cmd_run_daily}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
