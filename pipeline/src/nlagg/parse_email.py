@@ -233,10 +233,15 @@ def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: 
               labels: list[str] | None = None, snippet: str | None = None,
               backend: str = "file") -> dict:
     msg = parse_raw(raw)
-    sender_name, sender_email = parse_sender(_header(msg, "From"))     # decoded (MIME words)
-    if not sender_email or "@" not in sender_email:
-        sender_name, sender_email = parse_sender(_raw_from(msg))          # e.g. unquoted '@' in name
-        sender_name = _decode_words(sender_name)
+    # The address comes from the raw header (the policy-parsed value mangles an unquoted '@' in the
+    # display name on Python 3.10: '"dru riley"@trends.vc'); the name from the decoded one (MIME words).
+    dec_name, dec_email = parse_sender(_header(msg, "From"))
+    raw_name, raw_email = parse_sender(_raw_from(msg))
+    sender_email = raw_email if raw_email and "@" in raw_email else dec_email
+    if dec_name and dec_email.lower() == sender_email.lower():
+        sender_name = dec_name
+    else:
+        sender_name = _decode_words(raw_name)
     sender_email = sender_email.lower()
     subject = _header(msg, "Subject")
     tags = find_plus_tags(msg, inbox_address)
