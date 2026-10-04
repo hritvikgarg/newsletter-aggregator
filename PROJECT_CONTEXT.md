@@ -270,6 +270,11 @@ This file is the durable memory across sessions and for the team. To keep it fre
 - Verified on the real archive (PC shell, no key): tests 100/100 (+2 need Gmail libs); dry-run, cluster and
   run-daily work up to the LLM gate, which fails cleanly with "set GROQ_API_KEY".
 - **Next:** owner adds the Groq key + recipients → first real draft → review its quality → schedule.
+- **First real run (01:50 IST):** Llama 3.1 8B / 3.3 70B are Groq Enterprise-only now → switched to
+  `openai/gpt-oss-20b` (extract) / `openai/gpt-oss-120b` (write). Extract 53/57 (4 tiny items), 45 k tokens, free-tier
+  8 k TPM → token-aware pacing added. First draft (Sun 4 Oct, Superhuman only, so no multi-source story): 0 checker
+  drops, all numbers verified against sources; one framing slip (cut-short flight called "progress") → prompt rule.
+  Still to see: a weekday draft with TLDR + Neuron + Superhuman (agree/differ section).
 
 ### Session 2026-10-05 — M2 review sheet, second pass (hritvik, branch `hritvik/split-tuning-real-mail`)
 - Ran PR #6 code on the real archive (from the branch, before merging): 206 issues → 2,548 items, **382 sponsor (15%)**.
