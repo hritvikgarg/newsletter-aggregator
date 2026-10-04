@@ -209,10 +209,10 @@ def parse_sender(from_header: str) -> tuple[str, str]:
     """(display name, address). parseaddr returns ('', '') for display names with an unquoted '@'
     (e.g. `Dru Riley @ Trends.vc <d@trends.vc>`), so fall back to the <address> in the raw header."""
     name, addr = parseaddr(from_header)
-    if addr and "@" in addr:
-        return name, addr
     m = _ANGLE_RE.search(from_header or "")
-    if m:
+    # Python 3.10's parseaddr can return a wrong address ('"dru riley"@trends.vc') instead of ('', ''),
+    # so the <address> in the header wins whenever it disagrees.
+    if m and m.group(1).lower() != (addr or "").lower():
         return from_header[:m.start()].strip().strip('"').strip(), m.group(1)
     return name, addr
 
