@@ -10,6 +10,8 @@
                                 write a hand-check sheet for the M2 >=90% check
   extract [--days 3] [--limit N] [--redo] [--dry-run] [--item ID ...]
                                 M3: per-item LLM extraction (Groq / local Qwen — never Claude)
+  cluster [--segment S] [--hours 48] [--end ISO] [--no-analyze]
+                                M4: group items into stories; consensus vs divergence for multi-source stories
 """
 from __future__ import annotations
 
@@ -142,6 +144,17 @@ def cmd_extract(cfg, a) -> int:
     return 1 if r.failed and not r.done else 0
 
 
+def cmd_cluster(cfg, a) -> int:
+    from .cluster import run_cluster
+    end = datetime.fromisoformat(a.end) if a.end else None
+    if end is not None and end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    r = run_cluster(cfg, segment=a.segment, end=end, hours=a.hours, analyze=not a.no_analyze)
+    print(f"clustered {r.items} items -> {r.stories} stories ({r.multi_source} covered by 2+ newsletters)  "
+          f"analyzed={r.analyzed} failed={r.failed_analysis}  window {r.window_start[:16]} .. {r.window_end}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nlagg", description="Newsletter aggregator pipeline")
     p.add_argument("--config", type=Path, help="path to config.yaml (default: pipeline/config.yaml)")
@@ -185,13 +198,19 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--item", dest="items", type=int, action="append", help="only this item id (repeatable)")
     ex.add_argument("--dry-run", action="store_true", help="count items + estimate tokens, no API calls")
 
+    cl = sub.add_parser("cluster", help="M4: group items into stories")
+    cl.add_argument("--segment")
+    cl.add_argument("--hours", type=float, default=48)
+    cl.add_argument("--end", help="window end, ISO time (default: now)")
+    cl.add_argument("--no-analyze", action="store_true", help="skip the LLM consensus/divergence step")
+
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
             "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
-            "extract": cmd_extract}[a.cmd](cfg, a)
+            "extract": cmd_extract, "cluster": cmd_cluster}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
