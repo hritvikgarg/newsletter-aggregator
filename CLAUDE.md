@@ -17,9 +17,11 @@ Live per-newsletter status is in `data/sources.csv`. Design is in `PHASE4_DESIGN
 - **No Claude/AI in the capture pipeline.** Phase 5 enrichment uses Groq or local Qwen — never Claude.
 
 ## How we collaborate (see CONTRIBUTING.md for detail)
-- Work on a **branch**, push, open a **PR** — don't commit directly to `main`. The owner reviews PRs.
+- Teammates: work on a **branch**, push, open a **PR** — the owner reviews PRs.
+- **Owner exception (hritvik, 2026-10-05):** while the pipeline is being built, the owner's sessions push
+  straight to `main` — only after the full test suite passes; never force-push.
 - When a session did meaningful work, **append a note to `PROJECT_CONTEXT.md`** (Session Log) and
-  include it in your PR, so everyone sees what was discussed/decided.
+  include it in your PR (or push), so everyone sees what was discussed/decided.
 
 ## Where things stand (2026-10-04)
 Phases 1–3 done (38/45 confirmed; see `sources.csv`). Pipeline code lives in **`pipeline/`** (Python `nlagg`):

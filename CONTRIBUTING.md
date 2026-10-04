@@ -44,6 +44,7 @@ One PR = one focused change. Keep them small so they're easy to review.
 - **Never commit secrets.** `credentials.json`, `*.local.json` (tokens), `node_modules/`, and
   `data/archive/` are gitignored — keep it that way.
 - **Never push straight to `main`** for real changes — use a branch + PR so the other person can review.
+  (Exception, owner decision 2026-10-05: the owner's own sessions push to `main` during the pipeline build, tests first.)
 - **Don't force-push shared branches.**
 - Keep `data/sources.csv` (live status) and `PROJECT_CONTEXT.md` (context + session log) current.
 
