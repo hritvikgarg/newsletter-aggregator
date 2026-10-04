@@ -69,3 +69,25 @@ llm:
   api_key_env: GROQ_API_KEY
   max_retries: 3
   prompt_version: v1
+
+# M5: our issue. Names are placeholders — change freely.
+compose:
+  title:
+    1-TechAI: "Tech & AI, Distilled"
+  labels:
+    1-TechAI: "tech and AI"
+
+# M6: delivery after `nlagg approve`. Sent from NLAGG_IMAP_USER with the same App Password (SMTP).
+# Empty recipients = approve only writes/keeps the HTML file, nothing is emailed.
+delivery:
+  recipients: []          # e.g. ["you@example.com", "teammate@example.com"]
+  owner: ""               # gets "draft ready" + source-health alerts from the daily run (optional)
+  smtp_host: smtp.gmail.com
+  smtp_port: 465
+
+# M7: daily run (Windows Task Scheduler, see pipeline/scripts/install_daily_task.ps1)
+daily:
+  capture_backend: imap
+  extract_days: 2
+  cluster_hours: 48
+  health_quiet_days: 4    # alert when a picked newsletter has sent nothing for this many days

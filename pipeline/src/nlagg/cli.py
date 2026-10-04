@@ -12,6 +12,8 @@
                                 M3: per-item LLM extraction (Groq / local Qwen — never Claude)
   cluster [--segment S] [--hours 48] [--end ISO] [--no-analyze]
                                 M4: group items into stories; consensus vs divergence for multi-source stories
+  compose [--segment S] [--date YYYY-MM-DD] [--no-resolve] [--force]
+                                M5: write our issue (draft) -> pipeline/out/issues/<segment>/<date>.md/.html
 """
 from __future__ import annotations
 
@@ -155,6 +157,20 @@ def cmd_cluster(cfg, a) -> int:
     return 0
 
 
+def cmd_compose(cfg, a) -> int:
+    from .compose import run_compose
+    r = run_compose(cfg, segment=a.segment, issue_date=a.date, resolve_links=not a.no_resolve, force=a.force)
+    if r.skipped_reason:
+        print(f"nothing composed: {r.skipped_reason}")
+        return 0
+    print(f"draft issue #{r.issue_id}: \"{r.subject}\" from {r.stories} stories"
+          f"{' (after 1 retry)' if r.retried else ''}; {len(r.dropped)} sentence(s) dropped by the checker")
+    for d in r.dropped[:10]:
+        print("  dropped:", d)
+    print(f"  {r.html_path}\n  {r.md_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nlagg", description="Newsletter aggregator pipeline")
     p.add_argument("--config", type=Path, help="path to config.yaml (default: pipeline/config.yaml)")
@@ -204,13 +220,19 @@ def main(argv: list[str] | None = None) -> int:
     cl.add_argument("--end", help="window end, ISO time (default: now)")
     cl.add_argument("--no-analyze", action="store_true", help="skip the LLM consensus/divergence step")
 
+    co = sub.add_parser("compose", help="M5: write today's issue as a draft")
+    co.add_argument("--segment")
+    co.add_argument("--date", help="issue date YYYY-MM-DD (default: today, UTC) = the cluster window end")
+    co.add_argument("--no-resolve", action="store_true", help="don't resolve click-tracker links")
+    co.add_argument("--force", action="store_true", help="recompose even if already approved/sent")
+
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     cfg = load_config(a.config)
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
             "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
-            "extract": cmd_extract, "cluster": cmd_cluster}[a.cmd](cfg, a)
+            "extract": cmd_extract, "cluster": cmd_cluster, "compose": cmd_compose}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
