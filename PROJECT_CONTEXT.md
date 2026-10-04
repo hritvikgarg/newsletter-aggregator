@@ -222,7 +222,8 @@ full paywalled text. Closest real competitor to study: Ground News.
   promo-mail detection, split issues into `items` (roundup, sectioned, essay = 1 item, teaser = 1 item → full-post URL).
   Done = ≥90% correct on 20 real TechAI emails via `nlagg split-review`.
 - **M3** per-item extraction with Groq (small model) / local Qwen; pydantic validation; cache by content_hash+prompt_version.
-- **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence.
+- **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence;
+  resolve tracked links (once, cached) for the items that make it into stories.
 - **M5** compose: hook · top story · "Everyone's talking about" · quick hits · "Safe to skip" · close;
   exemplar-based style prompt; **citation validator** (every sentence cites item ids; reject unknown names/numbers).
 - **M6** human approve → send to team only (Buttondown/Beehiiv later). **M7** daily schedule + source-health alerts.
@@ -233,8 +234,9 @@ Still open from before:
 2. Build a sender → newsletter map (`data/senders.csv`) from the first real `nlagg stats` run.
 3. Decide whether to trim bonus subscriptions (Guardian/Semafor editions, Substack recs inflate volume).
 4. Confirm the 2 pending manual steps (RedChip code, Bootstrapped Founder confirm).
-6. **Opaque tracked links** (beehiiv / Substack / ConvertKit click-trackers) can only be resolved to the real
-   URL with a network request per link, which also registers a "click" with the sender. Resolve or not? (asked 2026-10-04)
+6. **Opaque tracked links** (beehiiv / Substack / ConvertKit click-trackers): **decided 2026-10-04 — resolve only
+   when needed**: request each tracked link once (cached) only for items that reach M4/M5, since every request
+   counts as a click with the sender. Build in M4.
 5. **Scheduled runs:** OAuth app in "Testing" → refresh token expires ~7 days. Use IMAP + App Password
    for the scheduled job, or publish the OAuth app.
 
@@ -259,7 +261,8 @@ This file is the durable memory across sessions and for the team. To keep it fre
   promo mails = promo subject AND ≤ 2 stories), `split_run.py` (+ `.md` files, `items` + `links` rows, retries,
   `--redo`, `split-review` hand-check sheet). Schema v3 with in-place upgrade of older DBs.
 - 46 tests (fixtures: TLDR-style roundup, Morning-Brew-style sectioned, essay, Substack teaser, promo, plain text).
-- **Not done:** the ≥90% check on 20 real emails (needs the first real capture); opaque tracker resolution (asked).
+- **Not done:** the ≥90% check on 20 real emails (needs the first real capture).
+- **Decided:** opaque tracked links are resolved lazily (once, cached, only for items used in M4/M5) — built in M4.
 
 ### Session 2026-10-04 — Pipeline plan + M0/M1 (hritvik, branch `hritvik/pipeline-m0-m1`)
 - Reviewed repo + 7 reference repos (run-llama, projectgreenhat, AI-Weekly-Digest, news-digest, asadcs, …).

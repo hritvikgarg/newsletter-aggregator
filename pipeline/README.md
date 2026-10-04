@@ -95,6 +95,6 @@ prompts/, templates/  added in M3/M5
 ## Known gaps (tracked for next PRs)
 - `newsletter` / `publisher` columns are empty: needs a sender → newsletter map (`data/senders.csv`),
   best built from the first real `nlagg stats` output.
-- Opaque tracked links (beehiiv/Substack/ConvertKit) are not resolved to the real URL yet; that
-  needs a network request per link (open question in PROJECT_CONTEXT §12).
+- Opaque tracked links (beehiiv/Substack/ConvertKit) are not resolved yet. Decided: resolve once,
+  cached, only for items used in M4/M5 (each request counts as a click) — built in M4.
 - Teasers point at the full post but don't fetch it.
