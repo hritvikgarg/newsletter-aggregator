@@ -42,7 +42,7 @@ DROP_ITEM_RE = re.compile(
     # seen in the first real capture (TLDR, The Neuron, Superhuman, Substack)
     r"^\s*advertise to\b|want to work at|track your referrals|^\s*https?://\S+\s*$|"
     r"^\s*(like|comment|restack|share)\s*$|^\s*share the \w+|^\s*want more\?|we just launched|"
-    r"^\s*a cat[’']s commentary|^\s*watch and/or listen",
+    r"^\s*a cat[’']s commentary|^\s*watch and/or listen|\bat tldr \(\$",   # TLDR's own job ads
     re.I)
 TEASER_LINK_RE = re.compile(
     r"(read|keep|continue) (more|reading|the full|the rest)|read (in|on) (the )?app|"
@@ -80,6 +80,14 @@ CTA_HINT_RE = re.compile(r"\b(here|today|now|register|request|read|try|get|start
 NOT_A_STORY_TITLE_RE = re.compile(r"^\W*(timestamps|references|show notes|transcript|chapters)\W*$|"
                                   r"^\s*\d{1,2}:\d{2}(:\d{2})?\s*$", re.I)      # podcast durations
 ENTRIES_MIN_SHARE = 0.6       # split into entries only when entries are most of the item (a list, not an essay)
+# Paid-post cut-off: nothing after it is content (Substack previews)
+PAYWALL_RE = re.compile(r"to unlock the rest|this post is for paid subscribers|"
+                        r"keep reading with a \d+-day free trial", re.I)
+# Substack web-post header ("Oct 1 READ IN APP"): the email is ONE post; its sub-headings are
+# sections of that post, not separate stories (owner decision 2026-10-05).
+READ_IN_APP_RE = re.compile(r"\bread in app\b", re.I)
+SPONSOR_INTRO_MIN_WORDS = 20  # an untitled body this long under a sponsor label IS the sponsor slot
+CAPTION_MAX_WORDS = 40        # a list heading whose only text is a media caption
 
 
 def _is_cta_block(b: Block) -> bool:
@@ -140,6 +148,9 @@ def is_title_like(b: Block) -> bool:
         # a sentence, not a headline (headings/linked titles may end with '?' or '!')
         if not READ_TIME_RE.search(b.text):
             return False
+    if (b.link_full and not b.bold_full and b.kind != "heading" and b.text.rstrip().endswith(".")
+            and not READ_TIME_RE.search(b.text)):
+        return False        # a plain linked sentence (embedded post / tweet card), not a headline
     if b.kind == "heading" or b.bold_full or b.link_full:
         return True
     # "Title (5 minute read)" where only the title part is linked/bold
@@ -222,6 +233,8 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
 
     for i, b in enumerate(blocks):
         nxt = blocks[i + 1] if i + 1 < len(blocks) else None
+        if b.words <= TITLE_MAX_WORDS and PAYWALL_RE.search(b.text):
+            break                                # paid preview: the rest is the upsell
         if b.words <= TITLE_MAX_WORDS and DROP_ITEM_RE.search(b.text):
             # "Love TLDR? Tell your friends…", "Want to advertise…": its own item, dropped below,
             # so the boilerplate never gets glued onto the previous story.
@@ -247,9 +260,16 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
             continue
         # social handles ("@poteto") and button lines are never titles
         not_title = is_byline or before_byline or _is_cta_block(b) or b.text.lstrip().startswith("@")
+        in_sponsor = bool(section and SPONSOR_LABEL_RE.search(section))
+        if (in_sponsor and cur is not None and cur.title is None
+                and len(cur.body.split()) >= SPONSOR_INTRO_MIN_WORDS):
+            sponsor_section_used = True          # an untitled ad ("Brought to you by" + list) was the slot
+        if (in_sponsor and sponsor_section_used and b.kind != "heading"
+                and cur is not None and cur.section == section):
+            not_title = True                     # bold feature lines inside the ad ("Fast: …") stay in it
         if is_title_like(b) and not not_title and (_has_link(b) or (nxt is not None and not is_title_like(nxt))):
             close()
-            if section and SPONSOR_LABEL_RE.search(section):
+            if in_sponsor:
                 if sponsor_section_used:                 # the sponsor slot is over
                     section = section_before_sponsor
                 else:
@@ -288,10 +308,30 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
             merged[-1].links += it.links
             continue
         merged.append(it)
-    items = _split_entries(_mark_sponsors(merged))
-    stories = [it for it in items if it.kind == "story"]
+    items = _drop_list_headings(_split_entries(_mark_sponsors(merged)))
     total_words = sum(b.words for b in blocks)
     all_links = [ln for b in blocks for ln in b.links]
+
+    # Substack web post: one post = one essay item; sub-headings stay inside it as "## " sections.
+    # Sponsor slots stay separate (flagged), so ad text never lands in the post.
+    if any(READ_IN_APP_RE.search(b.text) for b in blocks[:15]):
+        post = [it for it in items if not it.is_sponsor]
+        ads = [it for it in items if it.is_sponsor]
+        if post:
+            first = next((it.title for it in post if it.title), None)
+            title = subject or first                     # essays: title = subject,
+            if first and subject and subject.rstrip().endswith(("…", "...")):
+                title = first                            # unless the sender cut the subject short
+            parts = []
+            for it in post:
+                head = f"## {it.title}\n\n" if it.title and it.title != title else ""
+                parts.append((head + it.body).strip())
+            essay = Item(0, title, "\n\n".join(p for p in parts if p),
+                         next((it.url for it in post if it.url), None), kind="essay",
+                         links=[ln for it in post for ln in it.links])
+            return SplitResult(_finish([essay] + ads), "essay", classify_promo(subject, 1))
+
+    stories = [it for it in items if it.kind == "story"]
 
     # Teaser: short, with a read-more link -> one item pointing at the full post
     teaser_link = next((ln for ln in all_links if TEASER_LINK_RE.search(ln.text)), None)
@@ -310,6 +350,19 @@ def split_blocks(blocks: list[Block], subject: str = "") -> SplitResult:
 
     return SplitResult(_finish(items), "roundup" if stories else "empty",
                        classify_promo(subject, len(stories)))
+
+
+def _drop_list_headings(items: list[Item]) -> list[Item]:
+    """A list heading whose own text is only a photo caption ("The most important news in robotics
+    this week" + "Click here to see the clip. Photo: X") labels the items after it; it is not a story."""
+    out: list[Item] = []
+    for i, it in enumerate(items):
+        nxt = items[i + 1] if i + 1 < len(items) else None
+        if (it.kind == "story" and it.title and not it.is_sponsor and nxt is not None
+                and nxt.section == it.title and len(it.body.split()) <= CAPTION_MAX_WORDS):
+            continue
+        out.append(it)
+    return out
 
 
 def _mark_sponsors(items: list[Item]) -> list[Item]:

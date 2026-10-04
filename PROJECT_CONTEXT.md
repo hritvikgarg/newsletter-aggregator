@@ -253,6 +253,19 @@ This file is the durable memory across sessions and for the team. To keep it fre
 
 ## 14. SESSION LOG (append newest at top)
 
+### Session 2026-10-05 — M2 review sheet, second pass (hritvik, branch `hritvik/split-tuning-real-mail`)
+- Ran PR #6 code on the real archive (from the branch, before merging): 206 issues → 2,548 items, **382 sponsor (15%)**.
+- Claude's first pass on the 20-issue sheet: ~14/20 OK (70%, target 90%). Not OK: untitled sponsor blocks flagged the
+  *next* section ("In this episode", "🍪 Treats to Try"); StackAI ad feature lines became stories; paywall upsell
+  became items; caption-only list headings; one post split into its sub-headings (Pulse, Shopify deepdive).
+- **Decided (hritvik):** a long single post's sub-headings stay **one story** — a Substack web post ("READ IN APP")
+  becomes one `essay` item with `## ` sections in the body; sponsor slots stay separate. Accepted risk: a Pulse that
+  covers several unrelated topics also becomes one item.
+- **Fixes (added to PR #6):** the above + paywall cut-off, embedded linked-sentence cards stay in their story, TLDR
+  job ads dropped. Re-split of the 20 sheet issues: all 6 Not-OK cases fixed; remaining nits: a trivia answer item
+  (Superhuman Sunday), The Neuron's masthead "Sponsored by" flags its welcome intro (intro, not a story). 72 tests.
+- **Next:** merge PR #6 → `reindex` (applies the sender-name fix) → `split --redo` → `split-review` → owner ticks.
+
 ### Session 2026-10-04 (d) — M2 split tuned on real mail (hritvik, branch `hritvik/split-tuning-real-mail`)
 - First real `split` on 1-TechAI: 206 issues → 3,274 items, **872 flagged sponsor (27%)** — wrong. Diagnosed on the
   real archive (read-only access to the local repo): sponsor labels were *sticky* ("FROM OUR PARTNERS" flagged 409

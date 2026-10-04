@@ -102,11 +102,103 @@ SUBSTACK = (
 )
 
 
-def test_substack_byline_subtitle_and_footer():
-    its = items(SUBSTACK)
-    assert [it.title for it in its] == ["Import AI 474: Platonic mindspace; TPUs in space", "In the blind mountain"]
-    assert its[0].word_count > 200                   # byline + subtitle + intro belong to the post
-    assert "Jack Clark" != its[0].title
+def test_substack_post_is_one_essay_with_sections():
+    its = items(SUBSTACK, subject="Import AI 474: Platonic mindspace; TPUs in space")
+    # owner decision 2026-10-05: one Substack post = one item; sub-headings stay inside as sections
+    assert [(it.kind, it.title) for it in its] == [("essay", "Import AI 474: Platonic mindspace; TPUs in space")]
+    assert "## In the blind mountain" in its[0].body
+    assert its[0].word_count > 300                   # byline + subtitle + intro + sections
+    assert "Like" not in its[0].body.split() and "© 2026" not in its[0].body
+
+
+# Pragmatic Engineer paid preview / podcast: sponsor list with no title, paywall cut-off.
+PRAGMATIC = (
+    "<h1>" + LINK("Why has Shopify dropped React Native?", "https://e.com/post") + "</h1>"
+    "<p><a href='https://e.com/author'>Gergely Orosz</a></p><p>Sep 29</p><p><a href='https://e.com/app'>READ IN APP</a></p>"
+    + P(60, "intro") +
+    "<h2>Brought to You by</h2><p>• turbopuffer – " + "search " * 40 + "</p><p>• Linear – " + "agents " * 40 + "</p>"
+    "<h2>1. Why Shopify chose React Native</h2>" + P(150, "history") +
+    "<h2>Why performance wins</h2>" + P(150, "perf") +
+    "<h2>4. Haven’t we seen this before?...</h2>"
+    "<p>" + LINK("Subscribe to The Pragmatic Engineer to unlock the rest.", "https://e.com/sub") + "</p>"
+    "<h2>A subscription gets you:</h2><p>Full articles every Tuesday and Thursday</p>"
+)
+
+
+def test_pragmatic_post_sponsor_list_and_paywall():
+    its = items(PRAGMATIC, subject="Why has Shopify dropped React Native?")
+    essay, ads = its[0], its[1:]
+    assert essay.kind == "essay" and essay.title == "Why has Shopify dropped React Native?"
+    assert "## 1. Why Shopify chose React Native" in essay.body and "## Why performance wins" in essay.body
+    assert "turbopuffer" not in essay.body                              # the ad stays out of the post
+    assert len(ads) == 1 and ads[0].is_sponsor and "turbopuffer" in ads[0].body
+    assert "subscription gets you" not in essay.body and "unlock the rest" not in essay.body
+
+
+# Untitled sponsor block: the label is used up by it, so the NEXT section is not a sponsor.
+NEURON_UNTITLED_AD = (
+    "<h2>🎓 AI Skill of the Day: branch a thread</h2>" + P(60, "skill") +
+    "<p><b>FROM OUR PARTNERS</b></p>" + P(40, "durable") + "<p><b>Try chat.agent now.</b></p>"
+    "<h2>🍪 Treats to Try</h2>" + P(80, "tool") +
+    "<h2>📰 Around the Horn</h2>" + P(80, "news")
+)
+
+
+def test_untitled_sponsor_block_does_not_flag_next_section():
+    t = titles(NEURON_UNTITLED_AD)
+    flags = {x[1]: x[2] for x in t}
+    assert flags["🍪 Treats to Try"] == 0 and flags["📰 Around the Horn"] == 0
+    assert [x for x in t if x[2]] == [("FROM OUR PARTNERS", None, 1)]
+
+
+# Superhuman ad with bold feature lines and a bold linked tagline: all one sponsor item.
+STACKAI = (
+    "<h3>TODAY IN AI</h3><h2>" + LINK("Microsoft combines Copilot’s tools", "https://e.com/ms") + "</h2>" + P(60, "copilot") +
+    "<h3>PRESENTED BY STACKAI</h3><h2>" + LINK("Anyone can build an agent. But getting it past IT? Good luck", "https://e.com/ad") + "</h2>"
+    "<p>Most no-code agents aren’t safe for enterprise scale. But StackAI satisfies builders and IT:</p>"
+    "<p><b>Fast: Chat assistants, forms, Slack apps, and API endpoints in minutes</b></p>"
+    "<p>Safe: Governed deployments w/ review and rollback, plus RBAC, SSO, audit logs</p>"
+    "<p>" + LINK("Scale AI across your entire enterprise in just weeks.", "https://e.com/ad2") + "</p>"
+    "<h3>FROM THE FRONTIER</h3><h2>AI’s progress keeps speeding up</h2>" + P(120, "frontier")
+)
+
+
+def test_sponsor_feature_lines_stay_in_the_ad():
+    t = titles(STACKAI)
+    assert [x[1] for x in t] == ["Microsoft combines Copilot’s tools",
+                                 "Anyone can build an agent. But getting it past IT? Good luck",
+                                 "AI’s progress keeps speeding up"]
+    assert [x[2] for x in t] == [0, 1, 0]
+
+
+# A list heading whose only text is a photo caption is not a story; a linked sentence
+# (embedded post card) inside a story is not a new story.
+CAPTION_AND_EMBED = (
+    P(30, "intro") +
+    "<h3>WHAT’S NEXT</h3><h2>The most important news in robotics this week</h2>"
+    "<p>Click here to see the clip. Photo: Figure AI</p>"
+    "<p>1. <b>Your DoorDash order may soon arrive by drone</b>: " + "drone " * 40 + "</p>"
+    "<p>2. <b>Figure retires its F.02 robots</b>: " + "robot " * 40 + "</p>"
+    "<h2>😺 OpenAI launched Dots</h2>" + P(60, "dots") + "<p>What’s a dot? One of these little guys:</p>"
+    "<p><a href='https://x.com/openai/1'>Introducing dots, always-on agents built to handle everything.</a></p>"
+    + P(60, "more") +
+    "<h2>📰 Around the Horn</h2>" + P(60, "horn")
+)
+
+
+def test_caption_heading_dropped_and_embed_stays_in_story():
+    names = [it.title for it in items(CAPTION_AND_EMBED)]
+    assert "The most important news in robotics this week" not in names
+    assert "Your DoorDash order may soon arrive by drone" in names
+    assert not any(n and n.startswith("Introducing dots") for n in names)
+    dots = next(it for it in items(CAPTION_AND_EMBED) if it.title == "😺 OpenAI launched Dots")
+    assert "Introducing dots" in dots.body and dots.word_count > 120
+
+
+def test_tldr_job_ad_is_dropped():
+    html = ("<h1>Miscellaneous</h1><p>" + LINK("Xbox's CEO Isn't Playing Around (13 minute read)") + "</p>" + P(40, "x") +
+            "<p>" + LINK("Product Manager, Applied AI at TLDR ($225k base + $60k bonus, Fully Remote)") + "</p>" + P(40, "job"))
+    assert [x[1] for x in titles(html)] == ["Xbox's CEO Isn't Playing Around (13 minute read)"]
 
 
 # TLDR-like masthead: "Sign Up | Advertise | View Online", a lone "TLDR", and "Together With" + logo link.

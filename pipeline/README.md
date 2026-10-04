@@ -20,7 +20,7 @@ First segment end-to-end: **1-TechAI** (`segments.active` in `config.yaml`). Cap
 cd pipeline
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[gmail,dev]"
-pytest -q                                               # 67 tests, no network needed
+pytest -q                                               # 72 tests, no network needed
 ```
 
 ## Capture (M1)
@@ -83,6 +83,17 @@ see `tests/test_split_real_layouts.py`, synthetic copies of each layout):
   "© 2026 …" end the email; feedback polls ("What did you think…", "Loved it / Terrible") end the email;
 - dropped: masthead leftovers (intros < 12 words), "Timestamps"/"References", podcast durations, @handles,
   referral/advertise/hiring lines, empty truncated cards.
+
+**Second pass on the 20-issue review sheet (2026-10-05):**
+- **A Substack web post (header "READ IN APP") is ONE `essay` item** titled with the subject; its sub-headings
+  stay inside the body as `## ` sections (owner decision: a Pragmatic deepdive or Pulse is one story).
+  Sponsor slots inside it ("Brought to You by" + list) stay separate, flagged items.
+- Paid previews stop at the paywall line ("Subscribe to … to unlock the rest"); the upsell after it is dropped.
+- An *untitled* sponsor block (label + ad text, no headline) uses up the sponsor label, so the next section
+  (e.g. "🍪 Treats to Try", "In this episode") is no longer flagged as a sponsor.
+- Inside a sponsor slot, bold feature lines ("Fast: …") and the bold tagline link stay in the ad.
+- A list heading whose only text is a photo caption ("Click here to see the clip. Photo: …") is dropped;
+  a plain linked sentence (an embedded post/tweet card) is body, not a new story; TLDR's own job ads are dropped.
 
 **M2 done-check (from the plan):** run `split-review` on 20 real 1-TechAI issues and tick OK / Not OK;
 target ≥ 90% OK. Fixtures cover the five shapes, but rules must be tuned on real mail.
