@@ -39,7 +39,7 @@ def test_validate_coerces_bad_fields():
     ex = validate({"summary": "x", "category": "weird", "importance": "9", "entities": ["Google"]}, BODY)
     assert ex.category == "other" and ex.importance == 5 and ex.entities == [{"name": "Google", "type": "other"}]
     with pytest.raises(LLMError):
-        validate({"summary": ""}, BODY)
+        validate({"summary": ""}, BODY * 3)          # a real story with no summary is a failure
 
 
 def test_number_grounding():
@@ -105,7 +105,7 @@ def test_client_retries_429_then_caches(cfg):
 
     c = ChatClient(_settings(), conn, transport=transport, sleep=slept.append)
     assert c.chat_json("m", [{"role": "user", "content": "hi"}]) == {"ok": True}
-    assert slept == [1.0] and c.calls == 1 and c.tokens == 50
+    assert slept == [1.5] and c.calls == 1 and c.tokens == 50
     assert sent[0]["response_format"] == {"type": "json_object"}
     assert c.chat_json("m", [{"role": "user", "content": "hi"}]) == {"ok": True}     # cache hit, no transport call
     assert c.cache_hits == 1 and len(sent) == 2
@@ -155,3 +155,19 @@ def test_json_mode_rejected_falls_back(cfg):
     c = ChatClient(_settings(), None, transport=lambda b: (sent.append(dict(b)), seq.pop(0))[1], sleep=lambda s: None)
     assert c.chat_json("m", [{"role": "user", "content": "x"}]) == {"a": 2}
     assert "response_format" in sent[0] and "response_format" not in sent[1]
+
+
+def test_per_minute_rate_limit_waits_without_failing():
+    seq = [(429, {"retry-after": "7"}, "Rate limit reached ... tokens per minute (TPM). Please try again in 7.2s")] * 5 + \
+          [(200, {"x-ratelimit-remaining-tokens": "1200", "x-ratelimit-reset-tokens": "6.5s"},
+            json.dumps({"choices": [{"message": {"content": '{"a": 1}'}}]}))]
+    slept, t = [], [0.0]
+    c = ChatClient(_settings(max_retries=1), None, transport=lambda b: seq.pop(0), sleep=slept.append,
+                   clock=lambda: t[0])
+    assert c.chat_json("m", [{"role": "user", "content": "x"}]) == {"a": 1}     # 5 waits > max_retries, still ok
+    assert slept == [7.5] * 5 and c._pause_until == 6.5                         # next call pauses for the budget
+
+
+def test_tiny_item_without_summary_is_kept():
+    ex = validate({"summary": ""}, "Tetris\nThe answer is Tetris.")
+    assert ex.summary == "Tetris" and ex.importance == 1

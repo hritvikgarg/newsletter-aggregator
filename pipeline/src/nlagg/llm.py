@@ -58,6 +58,30 @@ class LLMSettings:
         return s
 
 
+def _duration(v: str) -> float | None:
+    """'7.66s' / '1m2.5s' / '120ms' / '3' -> seconds."""
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        pass
+    total, found = 0.0, False
+    for num, unit in re.findall(r"([\d.]+)(ms|h|m|s)", v):
+        found = True
+        total += float(num) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
+    return total if found else None
+
+
+def _retry_delay(headers: dict, payload: str) -> float | None:
+    d = _duration(headers.get("retry-after", ""))
+    if d:
+        return d
+    m = re.search(r"try again in ([\dhms.]+)", payload or "")
+    return _duration(m.group(1)) if m else None
+
+
 def is_reasoning_model(model: str) -> bool:
     return bool(re.search(r"gpt-oss|qwen3|deepseek-r1|reason", model or "", re.I))
 
@@ -91,6 +115,7 @@ class ChatClient:
         self.transport = transport or self._http
         self.sleep, self.clock = sleep, clock
         self._last = 0.0
+        self._pause_until = 0.0
         self.calls = 0          # API calls made (cache hits excluded)
         self.cache_hits = 0
         self.tokens = 0
@@ -138,8 +163,9 @@ class ChatClient:
         if FORBIDDEN.search(body["model"]):
             raise LLMError("Claude/Anthropic models are not allowed in the pipeline")
         last_err: Exception | None = None
-        for attempt in range(self.s.max_retries + 1):
-            wait = self.s.min_interval_s - (self.clock() - self._last)
+        attempt = rate_waits = 0
+        while True:
+            wait = max(self.s.min_interval_s - (self.clock() - self._last), self._pause_until - self.clock())
             if wait > 0:
                 self.sleep(wait)
             self._last = self.clock()
@@ -147,8 +173,10 @@ class ChatClient:
                 status, headers, payload = self.transport(body)
             except (urllib.error.URLError, TimeoutError, OSError) as e:
                 last_err, status, headers, payload = e, 0, {}, ""
+            headers = {k.lower(): v for k, v in (headers or {}).items()}
             if status == 200:
                 self.calls += 1
+                self._pace(headers)
                 try:
                     j = json.loads(payload)
                     self.tokens += int((j.get("usage") or {}).get("total_tokens") or 0)
@@ -160,17 +188,32 @@ class ChatClient:
                 if "model_not_found" in payload or "does not exist" in payload:
                     hint = " — run `python -m nlagg models` and set llm.extract_model / write_model in config.yaml"
                 raise LLMError(f"API error {status}: {payload[:300]}{hint}")
+            if status == 429 and rate_waits < 12 and "per day" not in payload.lower():
+                # per-minute limit: wait it out (doesn't count as a failure)
+                rate_waits += 1
+                delay = _retry_delay(headers, payload) or 5.0
+                log.info("rate limit (per minute); waiting %.1fs", delay)
+                self.sleep(min(delay + 0.5, 90.0))
+                continue
             if status:
                 last_err = LLMError(f"API error {status}: {payload[:200]}")
-            if attempt < self.s.max_retries:
-                ra = headers.get("retry-after") or headers.get("Retry-After")
-                try:
-                    delay = float(ra) if ra else 2.0 * (2 ** attempt)
-                except ValueError:
-                    delay = 2.0 * (2 ** attempt)
-                log.warning("LLM call failed (%s); retry %d in %.0fs", last_err, attempt + 1, delay)
-                self.sleep(min(delay, 120.0))
+            if attempt >= self.s.max_retries:
+                break
+            delay = _retry_delay(headers, payload) or 2.0 * (2 ** attempt)
+            log.warning("LLM call failed (%s); retry %d in %.0fs", last_err, attempt + 1, delay)
+            self.sleep(min(delay, 120.0))
+            attempt += 1
         raise LLMError(f"LLM call failed after {self.s.max_retries + 1} attempts: {last_err}")
+
+    def _pace(self, headers: dict) -> None:
+        """Groq reports the per-minute token budget left; pause before it runs out instead of hitting 429."""
+        try:
+            left = float(headers.get("x-ratelimit-remaining-tokens", "inf"))
+        except ValueError:
+            return
+        if left < 3000:
+            reset = _duration(headers.get("x-ratelimit-reset-tokens", "")) or 10.0
+            self._pause_until = self.clock() + reset
 
     def list_models(self) -> list[str]:
         """Model ids this key can use (GET /models)."""

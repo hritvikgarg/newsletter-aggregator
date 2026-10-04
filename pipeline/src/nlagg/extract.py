@@ -91,7 +91,11 @@ def validate(data: dict, source_text: str) -> Extraction:
     dropped = 0
     summary = _clip(data.get("summary"), 400)
     if not summary:
-        raise LLMError("extraction has no summary")
+        # tiny items (a prompt tip, a trivia answer) sometimes get no summary: keep them, ranked lowest
+        if len(source_text.split()) < 60:
+            summary, data = _clip(source_text.split("\n", 1)[0], 200) or "(no summary)", {**data, "importance": 1}
+        else:
+            raise LLMError("extraction has no summary")
     cat = str(data.get("category") or "other").strip().lower()
     cat = cat if cat in CATEGORIES else "other"
     try:

@@ -12,6 +12,8 @@ Hard rules (a checker rejects the issue if they are broken):
 2. Every number, name, company and product you write must appear in a cited item. Copy numbers exactly. Never add outside facts.
 3. Summarise in your own words. Never copy more than 10 words in a row from a source.
 4. Sentences are short (max 28 words). Paragraphs max 3 sentences.
+5. Keep the source's caveats: if it says something was cut short, delayed, disputed or only a claim, say so.
+   "why_it_matters" must be a consequence a source states (say which one), not our own opinion.
 
 Write these parts:
 - "subject": email subject, max 60 characters, catchy, names the top story. No ids.

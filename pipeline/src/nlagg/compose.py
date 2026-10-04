@@ -227,8 +227,23 @@ class Checker:
         return None
 
 
+_ODD_SPACES = str.maketrans({"\u2011": "-", "\u2010": "-", "\u202f": " ", "\u00a0": " ", "\u2009": " "})
+
+
+def tidy(v):
+    """Models like gpt-oss use non-breaking hyphens / narrow spaces ("3\u20115 miles"): plain ones read and match better."""
+    if isinstance(v, str):
+        return v.translate(_ODD_SPACES)
+    if isinstance(v, list):
+        return [tidy(x) for x in v]
+    if isinstance(v, dict):
+        return {k: tidy(x) for k, x in v.items()}
+    return v
+
+
 def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple[dict, list[str]]:
     """Return (cleaned issue, problems). Failing sentences are removed from the cleaned issue."""
+    data = tidy(data)
     problems: list[str] = []
     all_ids = [i["id"] for s in picked for i in s.items]
 
