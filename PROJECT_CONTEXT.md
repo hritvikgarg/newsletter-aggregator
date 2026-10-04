@@ -218,7 +218,7 @@ full paywalled text. Closest real competitor to study: Ground News.
 - **M0 ✅** repo setup, `pipeline/` package, config, schema v2 (items/stories/issues_out).
 - **M1 ✅ code / ⏳ real run** capture: Gmail → `.eml` + `messages` (api | imap | file backends, idempotent).
   → Run `python -m nlagg capture` on the machine with Gmail auth; check `nlagg stats` vs Gmail label counts.
-- **M2** clean HTML (strip tracking/pixels), sponsor detection, split issues into `items`
+- **M2** clean HTML (strip tracking/pixels), sponsor **and promo-mail** detection, split issues into `items`
   (roundups first, then sectioned briefs, essays = 1 item, teasers → fetch "read online"). Done = ≥90% correct on 20 TechAI emails.
 - **M3** per-item extraction with Groq (small model) / local Qwen; pydantic validation; cache by content_hash+prompt_version.
 - **M4** local embeddings → cluster items within 48h into `stories`; salience = distinct sources; consensus vs divergence.
@@ -259,8 +259,8 @@ This file is the durable memory across sessions and for the team. To keep it fre
   same hex gmail_id in all; idempotent; incremental with 3-day overlap; sender-override + `+tag` routing; is_issue;
   platform detection; `sync_log`; `nlagg stats` source-health view. 17 tests (fake Gmail API/IMAP), all passing.
 - **Not done:** no run against the real inbox yet (needs the machine with Gmail auth).
-- **Note:** repo now lives at `hritvikgarg/newsletter-aggregator` (copy of `KavyaJain321/newsletter-aggregator`);
-  CONTRIBUTING.md still points at Kavya's — agree on ONE canonical repo.
+- **Decided (hritvik):** canonical repo is **`hritvikgarg/newsletter-aggregator`** (CONTRIBUTING.md updated);
+  `is_issue = 0` needs a welcome/confirm subject **and** < 250 words; promo-mail detection deferred to M2.
 
 ### Session 2026-08-06/07 — Setup verification, Gmail API, archive design, product strategy
 - Pivoted fully from KTN → Gmail +tags (done earlier); this session focused on verification + design.

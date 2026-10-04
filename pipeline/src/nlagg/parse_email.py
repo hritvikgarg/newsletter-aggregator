@@ -1,7 +1,7 @@
 """Turn one raw RFC-822 message into a `messages` row. Deterministic, no AI.
 
-Routing and is_issue rules mirror tools/google-skill/export_inbox.ts (the export that was
-used to live-verify subscriptions), so results stay consistent with sources.csv.
+Routing and the is_issue subject regex mirror tools/google-skill/export_inbox.ts (the export that
+was used to live-verify subscriptions); is_issue additionally requires a short body (see is_issue).
 """
 from __future__ import annotations
 
@@ -46,6 +46,9 @@ PLATFORM_RULES: list[tuple[str, str, str]] = [
 ]
 
 WORDS_PER_MINUTE = 230
+# A welcome/confirm mail is short. A subject match alone is not enough: real issues can have
+# subjects like "Welcome to the AI bubble" or "How to verify AI output" (decided 2026-10-04).
+NON_ISSUE_MAX_WORDS = 250
 
 
 def parse_raw(raw: bytes) -> EmailMessage:
@@ -155,8 +158,10 @@ def visible_text(html: str | None, text: str | None) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
-def is_issue(subject: str) -> int:
-    return 0 if (not subject.strip() or CONFIRM_RE.search(subject)) else 1
+def is_issue(subject: str, word_count: int) -> int:
+    """0 only when the subject looks like welcome/confirm (or is empty) AND the body is short."""
+    looks_like_admin = not subject.strip() or bool(CONFIRM_RE.search(subject))
+    return 0 if (looks_like_admin and word_count < NON_ISSUE_MAX_WORDS) else 1
 
 
 def slugify(s: str, n: int = 28) -> str:
@@ -190,7 +195,7 @@ def build_row(raw: bytes, gmail_id: str, *, inbox_address: str, tag_to_segment: 
         "subject": subject,
         "sent_date": _to_iso_utc(_header(msg, "Date")),
         "received_date": _received_iso(msg),
-        "is_issue": is_issue(subject),
+        "is_issue": is_issue(subject, words),
         "labels": None if labels is None else ",".join(labels),
         "snippet": snippet if snippet is not None else vis[:200],
         "list_id": _header(msg, "List-Id") or None,

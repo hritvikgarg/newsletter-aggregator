@@ -68,6 +68,11 @@ def sample_mailbox() -> dict[str, bytes]:
             frm="Import AI <jack@importai.net>", to="notifyy1008+techai@gmail.com",
             delivered_to="notifyy1008+techai@gmail.com", subject="Welcome to Import AI!",
         ),
+        "18f0a1b2c3d4e5fd": make_eml(   # real issue whose subject matches the welcome regex
+            frm="The Neuron <theneuron@newsletter.theneurondaily.com>", to="notifyy1008+techai@gmail.com",
+            delivered_to="notifyy1008+techai@gmail.com", subject="Welcome to the AI bubble",
+            html="<p>" + "story " * 600 + "</p>",
+        ),
         "18f0a1b2c3d4e5fb": make_eml(
             frm="Google <no-reply@accounts.google.com>", to="notifyy1008@gmail.com",
             subject="Security alert",

@@ -46,11 +46,16 @@ def test_attachment_and_html_less(cfg, mailbox):
 
 
 def test_is_issue_rules():
-    assert is_issue("Welcome to Import AI!") == 0
-    assert is_issue("Please confirm your subscription") == 0
-    assert is_issue("Your verification code") == 0
-    assert is_issue("") == 0
-    assert is_issue("Nvidia beats; AMD slips") == 1
+    assert is_issue("Welcome to Import AI!", 80) == 0
+    assert is_issue("Please confirm your subscription", 30) == 0
+    assert is_issue("Your verification code", 12) == 0
+    assert is_issue("", 40) == 0
+    assert is_issue("Nvidia beats; AMD slips", 30) == 1
+    # Real issues whose subject happens to match must survive (long body)
+    assert is_issue("Welcome to the AI bubble", 1200) == 1
+    assert is_issue("How to verify AI output", 800) == 1
+    assert is_issue("", 900) == 1
+    assert is_issue("Welcome!", 249) == 0 and is_issue("Welcome!", 250) == 1
 
 
 def test_platform_substack():

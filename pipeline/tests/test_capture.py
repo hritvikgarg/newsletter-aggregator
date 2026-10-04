@@ -17,10 +17,10 @@ def rows(cfg):
 
 def test_capture_writes_files_and_rows(cfg, mailbox, fake_backend_cls):
     r = run_capture(cfg, fake_backend_cls(mailbox))
-    assert r.scanned == 7
-    assert r.new_added == 6 and r.ignored_sender == 1 and r.failed == 0
+    assert r.scanned == 8
+    assert r.new_added == 7 and r.ignored_sender == 1 and r.failed == 0
     got = rows(cfg)
-    assert len(got) == 7                                   # ignored sender recorded, not re-fetched
+    assert len(got) == 8                                   # ignored sender recorded, not re-fetched
     assert got["18f0a1b2c3d4e5fb"]["segment"] == "ignored"
     assert got["18f0a1b2c3d4e5fb"]["raw_eml_path"] is None
     tldr = got["18f0a1b2c3d4e5f6"]
@@ -28,8 +28,9 @@ def test_capture_writes_files_and_rows(cfg, mailbox, fake_backend_cls):
     assert (cfg.archive_dir / tldr["raw_eml_path"]).read_bytes() == mailbox["18f0a1b2c3d4e5f6"]
     assert tldr["thread_id"] == "t18f0a1b2c3d4e5f6" and tldr["labels"] == "INBOX"
     assert tldr["enrich_status"] == "pending" and tldr["split_status"] == "pending"
-    assert got["18f0a1b2c3d4e5fa"]["is_issue"] == 0       # welcome mail
-    assert r.by_segment == {"1-TechAI": 2, "2-BizFinance": 1, "3-Legal": 1,
+    assert got["18f0a1b2c3d4e5fa"]["is_issue"] == 0       # short welcome mail
+    assert got["18f0a1b2c3d4e5fd"]["is_issue"] == 1       # long real issue, "Welcome to ..." subject
+    assert r.by_segment == {"1-TechAI": 3, "2-BizFinance": 1, "3-Legal": 1,
                             "4-HRPeopleOps": 1, "unmatched": 1}
 
 
@@ -37,9 +38,9 @@ def test_capture_is_idempotent(cfg, mailbox, fake_backend_cls):
     run_capture(cfg, fake_backend_cls(mailbox))
     b = fake_backend_cls(mailbox)
     r2 = run_capture(cfg, b)
-    assert r2.new_added == 0 and r2.skipped_existing == 7
+    assert r2.new_added == 0 and r2.skipped_existing == 8
     assert b.fetched == []                                 # nothing downloaded twice
-    assert len(rows(cfg)) == 7
+    assert len(rows(cfg)) == 8
 
 
 def test_failures_are_retried_next_run(cfg, mailbox, fake_backend_cls):
@@ -70,7 +71,7 @@ def test_failures_are_retried_next_run(cfg, mailbox, fake_backend_cls):
 
 def test_dry_run_writes_nothing(cfg, mailbox, fake_backend_cls):
     r = run_capture(cfg, fake_backend_cls(mailbox), dry_run=True)
-    assert r.new_added == 7
+    assert r.new_added == 8
     assert rows(cfg) == {}
     assert not any(cfg.archive_dir.rglob("*.eml"))
 
@@ -90,7 +91,7 @@ def test_eml_dir_backend(cfg, mailbox, tmp_path):
     src = tmp_path / "export"
     write_box(src, mailbox)
     r = run_capture(cfg, EmlDirBackend(src))
-    assert r.new_added == 6
+    assert r.new_added == 7
     assert "18f0a1b2c3d4e5f6" in rows(cfg)                 # id taken from filename suffix
 
 
