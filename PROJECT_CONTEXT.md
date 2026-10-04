@@ -264,7 +264,13 @@ This file is the durable memory across sessions and for the team. To keep it fre
 - **Fixes (added to PR #6):** the above + paywall cut-off, embedded linked-sentence cards stay in their story, TLDR
   job ads dropped. Re-split of the 20 sheet issues: all 6 Not-OK cases fixed; remaining nits: a trivia answer item
   (Superhuman Sunday), The Neuron's masthead "Sponsored by" flags its welcome intro (intro, not a story). 72 tests.
-- **Next:** merge PR #6 → `reindex` (applies the sender-name fix) → `split --redo` → `split-review` → owner ticks.
+- **Real run by Claude on hritvik's PC** (Linux shell on the linked computer, PR #6 code, Python 3.10; DB backed up to
+  `index.db.bak-2026-10-05`): tests 70/70 (+2 need Gmail libs) — found and fixed a Python 3.10 sender-parsing bug;
+  `reindex` changed=64; `split --redo` → 206 issues → **2,292 items, 355 sponsor (15%)**, 35 essays, 7 empty (Kavya's
+  test mails, a login code, TLDR re-engagement — correct). Claude's pass: the 20 tuned issues ~20/20; **25 unseen
+  issues ~23/25** — The Neuron's special deep-dive edition (beehiiv, not Substack) is still split by sub-heading;
+  one Superhuman list block stays one item. Owner still ticks the sheet (`split-review-1-TechAI-2026-10-05-v2.md`).
+- **Next:** owner merges PR #6 (the DB already holds its output — don't re-run `split` on old `main`) → ticks the sheet → M3.
 
 ### Session 2026-10-04 (d) — M2 split tuned on real mail (hritvik, branch `hritvik/split-tuning-real-mail`)
 - First real `split` on 1-TechAI: 206 issues → 3,274 items, **872 flagged sponsor (27%)** — wrong. Diagnosed on the
