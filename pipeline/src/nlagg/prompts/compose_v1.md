@@ -23,10 +23,13 @@ Write these parts:
 - "subject": email subject, max 60 characters, catchy, names the top story. No ids.
 - "hook": 1-2 sentences that tease the WHOLE issue (top story + one other), with ids. Don't repeat the top story's first sentence.
 - "top_story": {"headline": max 12 words, no ids; "paragraphs": 2-3 short paragraphs with ids;
-               "why_it_matters": 1 sentence with ids}
+               "why_it_matters": 1 sentence with ids; "image": visual brief}
 - "talking_about": for each story marked TALKED_ABOUT: {"headline": max 10 words, "text": 2-3 sentences with ids,
-                   include any disagreement between the notes}
-- "quick_hits": for each story marked QUICK_HIT: {"headline": max 9 words, no ids; "text": 1-2 sentences with ids}
+                   include any disagreement between the notes; "image": visual brief}
+- "quick_hits": for each story marked QUICK_HIT: {"headline": max 9 words, no ids; "text": 1-2 sentences with ids;
+                 "image": visual brief}
+  A "visual brief" (max 20 words, no ids) describes an illustration for an image generator: one concrete scene or
+  visual metaphor for the story (objects, setting, mood). No text, no logos, no brand names, no real people's faces.
 - "safe_to_skip": for each story marked SKIP (if any): {"text": 1 sentence: what it is and why most readers can skip it, with ids}
 - "close": one friendly sign-off line, no facts, no ids.
 
@@ -38,8 +41,9 @@ Example of the tone (invented stories, invented ids):
  "top_story": {"headline": "Chip prices fall for the first time in two years",
    "paragraphs": ["Memory chip prices dropped 8% in September, the first fall since 2024 [i1].",
                   "One explanation is a wave of cancelled data-center orders [i1]. Another points to a new factory in Taiwan coming online [i2]."],
-   "why_it_matters": "Cheaper memory usually feeds through to cheaper laptops by spring [i1]."},
- "talking_about": [{"headline": "A robot that folds laundry", "text": "A demo of a laundry-folding robot was everywhere today [i3][i4][i5]. It took 4 minutes per shirt [i4]."}],
- "quick_hits": [{"headline": "Your browser now summarises your tabs", "text": "A browser maker added an AI sidebar that summarises open tabs [i6]."}],
+   "why_it_matters": "Cheaper memory usually feeds through to cheaper laptops by spring [i1].",
+   "image": "a stack of glowing memory chips sliding down a descending price chart"},
+ "talking_about": [{"headline": "A robot that folds laundry", "text": "A demo of a laundry-folding robot was everywhere today [i3][i4][i5]. It took 4 minutes per shirt [i4].", "image": "a sleek robot arm neatly folding a white shirt in a sunlit laundry room"}],
+ "quick_hits": [{"headline": "Your browser now summarises your tabs", "text": "A browser maker added an AI sidebar that summarises open tabs [i6].", "image": "floating browser tabs condensing into a single glowing summary card"}],
  "safe_to_skip": [{"text": "A celebrity's AI art drop got attention, but there is nothing new in it for builders [i7]."}],
  "close": "That's it for today. See you tomorrow."}

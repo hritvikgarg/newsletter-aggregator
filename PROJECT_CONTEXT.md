@@ -253,6 +253,14 @@ This file is the durable memory across sessions and for the team. To keep it fre
 
 ## 14. SESSION LOG (append newest at top)
 
+### Session 2026-10-15 — Card design + AI-generated images (hritvik)
+- Card layout after the owner's reference (featured story card, 2-column story cards, category label, date,
+  "Read story ↗"). **Decided (hritvik):** card images are AI-generated only, no publisher photos.
+  Writer adds a visual brief per story; house style appended; provider configurable (`compose.ai_images`,
+  Pollinations default, or any OpenAI-compatible images API; never Claude); images saved beside the issue and
+  embedded (cid) in the email; failed image -> colour tile. `nlagg image-test` checks the provider.
+- Found: the daily task was never installed (no runs 5–15 Oct). Image/LLM/IMAP calls only work from Windows.
+
 ### Session 2026-10-05 (c) — Our issue reads as our own publication (hritvik)
 - **Decided (hritvik):** the issue must not reference the newsletters it reads — no names, no "N newsletters",
   no "(Superhuman)" links. Implemented: the writer never sees newsletter names (notes are "note 1/3"); the checker

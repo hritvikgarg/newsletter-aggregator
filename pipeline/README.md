@@ -143,6 +143,10 @@ python -m nlagg run-daily                  # M7: capture -> split -> extract -> 
   item, and 11+ copied words; one retry, then failing sentences are dropped (listed in `nlagg issues`). Citations
   become links named after the newsletter; click-trackers are resolved once (cached). Items used in an earlier
   issue are not reused.
+- **Card images are AI-generated** (owner decision 2026-10-15): the writer adds a short visual brief per story, a
+  house style is appended (indigo/violet editorial illustration, no text/logos/real faces), images are saved in
+  `out/issues/<segment>/img/` and embedded in the email. Provider in `compose.ai_images` (Pollinations by default,
+  or any OpenAI-compatible images API; never Claude). Check it with `python -m nlagg image-test`.
 - **M7 run-daily** never sends: it leaves a draft and (if `delivery.owner` is set) emails the owner the step
   summary + alerts. Health alert = a picked newsletter silent for longer than 2.5× its usual gap (min 4 days).
 

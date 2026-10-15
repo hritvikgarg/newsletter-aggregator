@@ -75,6 +75,7 @@ class ComposeResult:
     retried: bool = False
     status: str = "draft"
     skipped_reason: str = ""
+    images: int = 0
 
 
 # ---------------------------------------------------------------- selection
@@ -248,6 +249,11 @@ def tidy(v):
     return v
 
 
+def _brief(x) -> str:
+    """Image brief: plain words only (it never reaches readers, but no ids / no 200+ chars)."""
+    return re.sub(r"\s+", " ", CITE_RE.sub("", str((x or {}).get("image") or "") if isinstance(x, dict) else "")).strip()[:200]
+
+
 def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple[dict, list[str]]:
     """Return (cleaned issue, problems). Failing sentences are removed from the cleaned issue."""
     data = tidy(data)
@@ -280,7 +286,7 @@ def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple
     t = data.get("top_story") or {}
     out["top_story"] = {"headline": clean_title_("top headline", t.get("headline"), top_ids),
                         "paragraphs": [p for p in (clean_text("top story", x) for x in (t.get("paragraphs") or [])[:4]) if p],
-                        "why_it_matters": clean_text("why it matters", t.get("why_it_matters"))}
+                        "why_it_matters": clean_text("why it matters", t.get("why_it_matters")), "image": _brief(t)}
     talked_ids = [i["id"] for s in by_role["TALKED_ABOUT"] for i in s.items]
     out["talking_about"] = []
     for x in (data.get("talking_about") or [])[:MAX_TALKING]:
@@ -289,7 +295,7 @@ def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple
         text = clean_text("talking about", x.get("text"))
         if text:
             out["talking_about"].append({"headline": clean_title_("talking headline", x.get("headline"), talked_ids),
-                                         "text": text})
+                                         "text": text, "image": _brief(x)})
     quick_ids = [i["id"] for s in by_role["QUICK_HIT"] for i in s.items]
     out["quick_hits"] = []
     for x in (data.get("quick_hits") or [])[:MAX_QUICK]:
@@ -297,7 +303,7 @@ def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple
         text = clean_text("quick hit", x.get("text"))
         if text:
             out["quick_hits"].append({"headline": clean_title_("quick hit headline", x.get("headline"), quick_ids),
-                                      "text": text})
+                                      "text": text, "image": _brief(x)})
     out["safe_to_skip"] = [{"text": tx} for tx in (clean_text("safe to skip", (x or {}).get("text") if isinstance(x, dict) else x)
                                                    for x in (data.get("safe_to_skip") or [])[:MAX_SKIP]) if tx]
     close = re.sub(r"\s+", " ", CITE_RE.sub("", str(data.get("close") or ""))).strip()
@@ -367,10 +373,11 @@ FONT = "font-family:'Figtree','Helvetica Neue',Helvetica,Arial,sans-serif;"
 class RenderCtx:
     linker: Linker
     meta: dict[int, dict]                 # item id -> {"category": str, "sent": "YYYY-MM-DD..."}
-    images: dict[str, str] = field(default_factory=dict)    # article url -> image url
+    images: dict[str, str] = field(default_factory=dict)    # article url -> image url  (images: article)
     default_date: str = ""
+    ai_images: dict[str, str] = field(default_factory=dict) # card key -> image path    (images: ai)
 
-    def card(self, text: str, headline: str = "") -> dict:
+    def card(self, text: str, headline: str = "", key: str = "") -> dict:
         ids = [int(x) for x in CITE_RE.findall(text or "")]
         first = self.meta.get(ids[0], {}) if ids else {}
         url = self.linker.for_text(text)
@@ -380,7 +387,8 @@ class RenderCtx:
         except ValueError:
             day = ""
         return {"category": CATEGORY_LABEL.get(first.get("category") or "other", "Technology"),
-                "headline": headline, "text": plain(text), "url": url, "image": self.images.get(url, ""),
+                "headline": headline, "text": plain(text), "url": url,
+                "image": self.ai_images.get(key) or self.images.get(url, ""),
                 "date": day}
 
 
@@ -465,7 +473,7 @@ def _section(heading: str, inner: str) -> str:
 def render_html(issue: dict, ctx: RenderCtx, title: str, date_label: str, footer: str) -> str:
     top = issue["top_story"]
     paras = top["paragraphs"]
-    lead = ctx.card(" ".join(paras), top["headline"])
+    lead = ctx.card(" ".join(paras), top["headline"], "top")
     body = "".join(f'<p style="{FONT}margin:0 0 14px;font-size:16px;line-height:1.65;color:#3A3946;">{_e(plain(p))}</p>'
                    for p in paras)
     why = (f'<div style="{FONT}margin:4px 0 0;padding:16px 18px;background:#F4F0FF;border-radius:14px;font-size:15px;'
@@ -478,8 +486,8 @@ def render_html(issue: dict, ctx: RenderCtx, title: str, date_label: str, footer
                 f'<h2 class="h2" style="{FONT}margin:0 0 16px;font-size:28px;line-height:1.2;font-weight:800;'
                 f'letter-spacing:-0.02em;color:{ACCENT};">{_e(top["headline"])}</h2>{body}{why}{_card_footer(lead)}'
                 f'</td></tr></table>')
-    talking = [ctx.card(x["text"], x["headline"]) for x in issue["talking_about"]]
-    quick = [ctx.card(x["text"], x.get("headline", "")) for x in issue["quick_hits"]]
+    talking = [ctx.card(x["text"], x["headline"], f"talk{k}") for k, x in enumerate(issue["talking_about"])]
+    quick = [ctx.card(x["text"], x.get("headline", ""), f"quick{k}") for k, x in enumerate(issue["quick_hits"])]
     skip = ""
     if issue["safe_to_skip"]:
         items = "".join(f'<tr><td style="{FONT}padding:10px 0;border-top:1px solid {LINE};font-size:15px;line-height:1.55;'
@@ -497,7 +505,8 @@ def render_html(issue: dict, ctx: RenderCtx, title: str, date_label: str, footer
 
 # ---------------------------------------------------------------- orchestration
 def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | None = None, client=None,
-                resolve_links: bool = True, fetch=None, fetch_html=None, force: bool = False) -> ComposeResult:
+                resolve_links: bool = True, fetch=None, fetch_html=None, force: bool = False,
+                image_kw: dict | None = None) -> ComposeResult:
     segment = segment or (cfg.active_segments[0] if cfg.active_segments else "1-TechAI")
     issue_date = issue_date or datetime.now(timezone.utc).date().isoformat()
     comp = cfg.raw.get("compose", {})
@@ -549,17 +558,26 @@ def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | No
         urls = {i: u for i, u in urls.items() if u and not is_newsletter_url(u)}
     linker_md, linker_html = Linker(urls, links_mode), Linker(urls, links_mode)
     images: dict[str, str] = {}
-    if links_mode == "original" and str(comp.get("images", "article")).lower() == "article" and urls and resolve_links:
+    ai_images: dict[str, str] = {}
+    images_mode = str(comp.get("images", "ai")).lower()
+    out_dir = cfg.repo_root / "pipeline" / "out" / "issues" / segment
+    if images_mode == "article" and links_mode == "original" and urls and resolve_links:
         from .links import page_images
         images = page_images(conn, list(urls.values()), **({"fetch_html": fetch_html} if fetch_html else {}))
+    elif images_mode == "ai":
+        from .images import ImageSettings, make_images
+        briefs = {"top": issue["top_story"].get("image", "")}
+        briefs.update({f"talk{k}": x.get("image", "") for k, x in enumerate(issue["talking_about"])})
+        briefs.update({f"quick{k}": x.get("image", "") for k, x in enumerate(issue["quick_hits"])})
+        ai_images = make_images(briefs, out_dir, ImageSettings.from_config(comp), **(image_kw or {}))
+        res.images = len(ai_images)
     meta = {r["id"]: {"category": r["category"], "sent": r["sent_date"]} for r in conn.execute(
         f"""SELECT i.id, i.sent_date, e.category FROM items i LEFT JOIN item_enrichment e ON e.item_id = i.id
             WHERE i.id IN ({','.join('?' * len(cited)) or 'NULL'})""", cited)}
-    ctx = RenderCtx(linker_html, meta, images, issue_date)
+    ctx = RenderCtx(linker_html, meta, images, issue_date, ai_images)
     footer = comp.get("footer", {}).get(segment) if isinstance(comp.get("footer"), dict) else comp.get("footer")
     footer = footer or f"{title} is a daily briefing on {label}. Reply to this email to send feedback or to unsubscribe."
     date_label = date.fromisoformat(issue_date).strftime("%A, %d %B %Y").replace(" 0", " ")
-    out_dir = cfg.repo_root / "pipeline" / "out" / "issues" / segment
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path, html_path = out_dir / f"{issue_date}.md", out_dir / f"{issue_date}.html"
     md_path.write_text(render_md(issue, linker_md, title, date_label), encoding="utf-8")

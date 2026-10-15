@@ -36,7 +36,19 @@ def _smtp_settings(cfg: Config) -> tuple[str, int, str, str]:
     return d.get("smtp_host", "smtp.gmail.com"), int(d.get("smtp_port", 465)), user, pw
 
 
-def build_email(subject: str, html: str, text: str, sender: str, to: list[str]) -> EmailMessage:
+def build_email(subject: str, html: str, text: str, sender: str, to: list[str],
+                base_dir: Path | None = None) -> EmailMessage:
+    """HTML + plain text. Local images (src="img/...") are embedded as inline attachments (cid:)."""
+    files: list[tuple[str, Path]] = []
+    if base_dir is not None:
+        def repl(mo):
+            path = base_dir / mo.group(1)
+            if not path.is_file():
+                return mo.group(0)
+            cid = make_msgid(domain="nlagg.local")[1:-1]
+            files.append((cid, path))
+            return f'src="cid:{cid}"'
+        html = re.sub(r'src="(img/[^"]+)"', repl, html)
     m = EmailMessage()
     m["Subject"] = subject
     m["From"] = sender
@@ -46,6 +58,11 @@ def build_email(subject: str, html: str, text: str, sender: str, to: list[str]) 
     m["Message-ID"] = make_msgid(domain=sender.split("@")[-1])
     m.set_content(text)
     m.add_alternative(html, subtype="html")
+    if files:
+        html_part = m.get_body(("html",))
+        for cid, path in files:
+            sub = {"png": "png", "webp": "webp"}.get(path.suffix.lower().lstrip("."), "jpeg")
+            html_part.add_related(path.read_bytes(), "image", sub, cid=f"<{cid}>", filename=path.name)
     return m
 
 
@@ -92,7 +109,8 @@ def approve(cfg: Config, *, segment: str | None = None, issue_date: str | None =
         html = Path(row["html_path"]).read_text(encoding="utf-8")
         text = md_to_text(Path(row["md_path"]).read_text(encoding="utf-8"))
         sender = os.environ.get("NLAGG_IMAP_USER") or cfg.inbox_address
-        send_email(cfg, build_email(report.get("subject") or "Today's digest", html, text, sender, to), smtp_factory)
+        send_email(cfg, build_email(report.get("subject") or "Today's digest", html, text, sender, to,
+                                    base_dir=Path(row["html_path"]).parent), smtp_factory)
         status, sent_to, note = "sent", to, f"sent to {len(to)} recipient(s)"
     report.update({"approved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sent_to": sent_to})
     with conn:

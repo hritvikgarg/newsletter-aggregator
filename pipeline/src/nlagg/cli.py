@@ -15,6 +15,7 @@
   compose [--segment S] [--date YYYY-MM-DD] [--no-resolve] [--force]
                                 M5: write our issue (draft) -> pipeline/out/issues/<segment>/<date>.md/.html
   models                        list the LLM models your key can use (checks config llm.*_model)
+  image-test [--brief TEXT]     generate one AI card image (checks config compose.ai_images)
   issues [--segment S]          list our issues (draft / approved / sent / rejected)
   approve [--date D] [--dry-run]  M6: approve the latest draft and email it to delivery.recipients
   reject [--date D] [--reason R]  M6: reject a draft (its stories can be used again)
@@ -196,6 +197,19 @@ def cmd_models(cfg, a) -> int:
     return 0
 
 
+def cmd_image_test(cfg, a) -> int:
+    from .images import ImageSettings, make_images
+    s = ImageSettings.from_config(cfg.raw.get("compose", {}))
+    out = cfg.repo_root / "pipeline" / "out" / "image-test"
+    got = make_images({"test": a.brief}, out, s)
+    if not got:
+        print(f"image generation FAILED with provider '{s.provider}' at {s.base_url} (see the warning above). "
+              f"If it needs a key, put IMAGE_API_KEY=... in pipeline/.env")
+        return 1
+    print(f"ok: {out / got['test']}")
+    return 0
+
+
 def cmd_issues(cfg, a) -> int:
     conn = db.connect(cfg.db_path)
     seg = a.segment or (cfg.active_segments[0] if cfg.active_segments else "1-TechAI")
@@ -290,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--force", action="store_true", help="recompose even if already approved/sent")
 
     sub.add_parser("models", help="list the LLM models your API key can use")
+    it = sub.add_parser("image-test", help="generate one AI image to check the image provider works")
+    it.add_argument("--brief", default="a small satellite above a glowing blue planet at dawn")
     li = sub.add_parser("issues", help="list our issues")
     li.add_argument("--segment")
     ap = sub.add_parser("approve", help="M6: approve a draft and email it to delivery.recipients")
@@ -310,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     return {"init-db": cmd_init_db, "capture": cmd_capture, "stats": cmd_stats,
             "split": cmd_split, "split-review": cmd_split_review, "reindex": cmd_reindex,
             "extract": cmd_extract, "cluster": cmd_cluster, "compose": cmd_compose,
-            "issues": cmd_issues, "models": cmd_models, "approve": cmd_approve, "reject": cmd_reject, "run-daily": cmd_run_daily}[a.cmd](cfg, a)
+            "issues": cmd_issues, "models": cmd_models, "image-test": cmd_image_test, "approve": cmd_approve, "reject": cmd_reject, "run-daily": cmd_run_daily}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

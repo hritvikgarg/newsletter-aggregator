@@ -162,6 +162,7 @@ def test_page_image_found_and_cached(cfg):
 def test_cards_render_images_headlines_and_fallback(cfg, tmp_path, monkeypatch):
     ids = prepare(cfg)
     monkeypatch.setattr(cfg, "repo_root", tmp_path)
+    cfg.raw["compose"]["images"] = "article"
     reply = compose_reply(ids, bad=False)
     reply["quick_hits"][0]["headline"] = "RSA keys break faster"
     r = run_compose(cfg, issue_date="2026-10-02", client=FakeChat(lambda m, x: reply), resolve_links=True,
@@ -173,3 +174,59 @@ def test_cards_render_images_headlines_and_fallback(cfg, tmp_path, monkeypatch):
     assert "linear-gradient" in html                                         # card without an image
     assert "RSA keys break faster" in html and "Read story" in html and "Launch" in html
     assert "October 1, 2026" in html
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 40
+
+
+def test_ai_images_generated_once_and_used_in_cards(cfg, tmp_path, monkeypatch):
+    ids = prepare(cfg)
+    monkeypatch.setattr(cfg, "repo_root", tmp_path)
+    cfg.raw["compose"]["images"] = "ai"
+    reply = compose_reply(ids, bad=False)
+    reply["top_story"]["image"] = "VR glasses floating above a stage [i1] with the Meta logo"
+    reply["quick_hits"][0]["image"] = "a padlock cracking open"
+    urls = []
+
+    def get(url, headers, timeout):
+        urls.append(url)
+        return PNG
+
+    r = run_compose(cfg, issue_date="2026-10-02", client=FakeChat(lambda m, x: reply), resolve_links=False,
+                    image_kw={"get": get})
+    assert r.images == 2 and len(urls) == 2
+    assert urls[0].startswith("https://gen.pollinations.ai/image/") and "nologo=true" in urls[0]
+    assert "Meta%20logo" not in urls[0] and "%5Bi1%5D" not in urls[0]                # brief cleaned
+    html = r.html_path.read_text(encoding="utf-8")
+    assert html.count('src="img/') == 2 and (r.html_path.parent / "img").is_dir()
+    run_compose(cfg, issue_date="2026-10-02", client=FakeChat(lambda m, x: reply), resolve_links=False,
+                image_kw={"get": get}, force=True)
+    assert len(urls) == 2                                   # same briefs -> files reused, no new generation
+
+
+def test_failed_image_falls_back_to_tile(cfg, tmp_path, monkeypatch):
+    ids = prepare(cfg)
+    monkeypatch.setattr(cfg, "repo_root", tmp_path)
+    reply = compose_reply(ids, bad=False)
+    reply["top_story"]["image"] = "a rocket"
+
+    def get(url, headers, timeout):
+        raise OSError("service down")
+
+    r = run_compose(cfg, issue_date="2026-10-02", client=FakeChat(lambda m, x: reply), resolve_links=False,
+                    image_kw={"get": get})
+    assert r.images == 0 and "linear-gradient" in r.html_path.read_text(encoding="utf-8")
+
+
+def test_openai_compatible_provider():
+    import base64
+    from nlagg.images import ImageSettings, generate
+    s = ImageSettings(provider="openai_compatible", base_url="https://api.together.xyz/v1", model="flux")
+    seen = {}
+
+    def post(url, body, headers, timeout):
+        seen.update(url=url, body=body)
+        return {"data": [{"b64_json": base64.b64encode(PNG).decode()}]}
+
+    assert generate("a rocket", s, 1, post=post) == PNG
+    assert seen["url"].endswith("/images/generations") and seen["body"]["size"] == "1200x630"

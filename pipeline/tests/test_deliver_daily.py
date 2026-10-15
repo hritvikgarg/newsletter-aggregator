@@ -145,3 +145,15 @@ def test_quiet_sources_uses_each_newsletters_rhythm(cfg):
     seed_items(cfg, daily + weekly)
     q = quiet_sources(cfg, quiet_days=4, now=now)
     assert len(q) == 1 and "tldr@example.com" in q[0]          # the weekly one is on schedule
+
+
+def test_local_images_are_embedded_inline(tmp_path):
+    from nlagg.deliver import build_email
+    (tmp_path / "img").mkdir()
+    (tmp_path / "img" / "a1.png").write_bytes(b"\x89PNG\r\n\x1a\nxxxx")
+    m = build_email("s", '<img src="img/a1.png"><img src="img/missing.png">', "t", "me@x.com", ["a@x.com"],
+                    base_dir=tmp_path)
+    html = m.get_body(("html",)).get_content()
+    assert 'src="cid:' in html and 'src="img/missing.png"' in html
+    parts = [p for p in m.walk() if p.get_content_type() == "image/png"]
+    assert len(parts) == 1 and parts[0]["Content-ID"].strip("<>") in html
