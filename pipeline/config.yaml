@@ -86,10 +86,14 @@ compose:
   #   ai = generate one illustration per card (see ai_images); article = the article's own preview image; none = tiles
   images: ai
   ai_images:
-    provider: pollinations            # pollinations | openai_compatible (Together, Nebius, ...). Never Claude.
-    base_url: https://gen.pollinations.ai
-    model: flux
-    api_key_env: IMAGE_API_KEY        # put IMAGE_API_KEY=... in pipeline/.env if the provider needs a key
+    # cloudflare: free daily Workers AI allowance — needs CF_ACCOUNT_ID + IMAGE_API_KEY (API token) in .env
+    # pollinations: needs a key now (401 without one, seen 2026-10-15) — base_url https://gen.pollinations.ai, model flux
+    # openai_compatible: Together / Nebius / local server — base_url .../v1, model of that provider. Never Claude.
+    provider: cloudflare
+    base_url: https://api.cloudflare.com/client/v4
+    model: "@cf/black-forest-labs/flux-1-schnell"
+    api_key_env: IMAGE_API_KEY
+    account_id_env: CF_ACCOUNT_ID
     width: 1200
     height: 630
 

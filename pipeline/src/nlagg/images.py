@@ -8,6 +8,8 @@ Providers (config `images:`):
   pollinations       GET  {base_url}/image/{prompt}?width=&height=&seed=&model=&nologo=true   key optional
   openai_compatible  POST {base_url}/images/generations {model, prompt, size, response_format: b64_json}
                      (Together, Nebius, a local server ... anything speaking that API)
+  cloudflare         POST https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/{model}
+                     Workers AI free daily allowance; model e.g. @cf/black-forest-labs/flux-1-schnell
 Never Claude/Anthropic (team rule). A failed image is not an error: the card falls back to a colour tile.
 """
 from __future__ import annotations
@@ -40,6 +42,7 @@ class ImageSettings:
     base_url: str = "https://gen.pollinations.ai"
     model: str = "flux"
     api_key: str | None = None
+    account_id: str | None = None
     style: str = DEFAULT_STYLE
     width: int = 1200
     height: int = 630
@@ -51,7 +54,8 @@ class ImageSettings:
         s = cls(provider=im.get("provider", "pollinations"), base_url=str(im.get("base_url", cls.base_url)).rstrip("/"),
                 model=im.get("model", "flux"), api_key=os.environ.get(im.get("api_key_env", "IMAGE_API_KEY")) or None,
                 style=im.get("style", DEFAULT_STYLE), width=int(im.get("width", 1200)),
-                height=int(im.get("height", 630)))
+                height=int(im.get("height", 630)),
+                account_id=os.environ.get(im.get("account_id_env", "CF_ACCOUNT_ID")) or None)
         for v in (s.base_url, s.model, s.provider):
             if FORBIDDEN.search(v):
                 raise SystemExit(f"ai_images: '{v}' — Claude/Anthropic is not allowed in the pipeline (team rule)")
@@ -96,7 +100,17 @@ def generate(prompt: str, s: ImageSettings, seed: int, *, get=_http_get, post=_h
         if d.get("url"):
             return get(d["url"], {}, s.timeout_s)
         raise ValueError(f"no image in reply: {str(j)[:200]}")
-    raise SystemExit(f"unknown ai_images.provider '{s.provider}' (pollinations | openai_compatible)")
+    if s.provider == "cloudflare":
+        if not s.account_id or not s.api_key:
+            raise ValueError("cloudflare needs CF_ACCOUNT_ID and IMAGE_API_KEY (an API token with Workers AI) in .env")
+        base = s.base_url if "cloudflare.com" in s.base_url else "https://api.cloudflare.com/client/v4"
+        j = post(f"{base}/accounts/{s.account_id}/ai/run/{s.model}",
+                 {"prompt": prompt, "steps": 6, "seed": seed}, auth, s.timeout_s)
+        img = (j.get("result") or {}).get("image")
+        if not img:
+            raise ValueError(f"no image in reply: {str(j)[:200]}")
+        return base64.b64decode(img)
+    raise SystemExit(f"unknown ai_images.provider '{s.provider}' (pollinations | openai_compatible | cloudflare)")
 
 
 def _ext(data: bytes) -> str:

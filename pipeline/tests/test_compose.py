@@ -183,6 +183,7 @@ def test_ai_images_generated_once_and_used_in_cards(cfg, tmp_path, monkeypatch):
     ids = prepare(cfg)
     monkeypatch.setattr(cfg, "repo_root", tmp_path)
     cfg.raw["compose"]["images"] = "ai"
+    cfg.raw["compose"]["ai_images"] = {"provider": "pollinations", "base_url": "https://gen.pollinations.ai", "model": "flux"}
     reply = compose_reply(ids, bad=False)
     reply["top_story"]["image"] = "VR glasses floating above a stage [i1] with the Meta logo"
     reply["quick_hits"][0]["image"] = "a padlock cracking open"
@@ -230,3 +231,19 @@ def test_openai_compatible_provider():
 
     assert generate("a rocket", s, 1, post=post) == PNG
     assert seen["url"].endswith("/images/generations") and seen["body"]["size"] == "1200x630"
+
+
+def test_cloudflare_provider():
+    import base64
+    from nlagg.images import ImageSettings, generate
+    s = ImageSettings(provider="cloudflare", base_url="https://api.cloudflare.com/client/v4",
+                      model="@cf/black-forest-labs/flux-1-schnell", api_key="tok", account_id="acc")
+    seen = {}
+
+    def post(url, body, headers, timeout):
+        seen.update(url=url, headers=headers)
+        return {"result": {"image": base64.b64encode(PNG).decode()}, "success": True}
+
+    assert generate("a rocket", s, 7, post=post) == PNG
+    assert seen["url"] == "https://api.cloudflare.com/client/v4/accounts/acc/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    assert seen["headers"] == {"Authorization": "Bearer tok"}
