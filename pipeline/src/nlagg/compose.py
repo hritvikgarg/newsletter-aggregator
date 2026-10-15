@@ -290,8 +290,14 @@ def validate_issue(data: dict, picked: list[StoryIn], checker: Checker) -> tuple
         if text:
             out["talking_about"].append({"headline": clean_title_("talking headline", x.get("headline"), talked_ids),
                                          "text": text})
-    out["quick_hits"] = [{"text": tx} for tx in (clean_text("quick hit", (x or {}).get("text") if isinstance(x, dict) else x)
-                                                 for x in (data.get("quick_hits") or [])[:MAX_QUICK]) if tx]
+    quick_ids = [i["id"] for s in by_role["QUICK_HIT"] for i in s.items]
+    out["quick_hits"] = []
+    for x in (data.get("quick_hits") or [])[:MAX_QUICK]:
+        x = x if isinstance(x, dict) else {"text": x}
+        text = clean_text("quick hit", x.get("text"))
+        if text:
+            out["quick_hits"].append({"headline": clean_title_("quick hit headline", x.get("headline"), quick_ids),
+                                      "text": text})
     out["safe_to_skip"] = [{"text": tx} for tx in (clean_text("safe to skip", (x or {}).get("text") if isinstance(x, dict) else x)
                                                    for x in (data.get("safe_to_skip") or [])[:MAX_SKIP]) if tx]
     close = re.sub(r"\s+", " ", CITE_RE.sub("", str(data.get("close") or ""))).strip()
@@ -350,82 +356,148 @@ class Linker:
         return ""
 
 
-FONT = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
+CATEGORY_LABEL = {"launch": "Launch", "funding": "Funding", "research": "Research", "policy": "Policy",
+                  "business": "Business", "security": "Security", "product": "Product", "people": "People",
+                  "opinion": "Opinion", "tutorial": "How-to", "other": "Technology"}
+INK, MUTED, ACCENT, LINE, CANVAS = "#14121F", "#6B6B76", "#6E45D8", "#E7E6EE", "#F5F5F8"
+FONT = "font-family:'Figtree','Helvetica Neue',Helvetica,Arial,sans-serif;"
 
 
-def _p(text: str, link: str, style: str) -> str:
-    more = (f' <a href="{htmlmod.escape(link)}" style="color:#2747E8;text-decoration:none;font-weight:600;'
-            f'white-space:nowrap;">Read more</a>') if link else ""
-    return f'<p style="{style}">{htmlmod.escape(plain(text))}{more}</p>'
+@dataclass
+class RenderCtx:
+    linker: Linker
+    meta: dict[int, dict]                 # item id -> {"category": str, "sent": "YYYY-MM-DD..."}
+    images: dict[str, str] = field(default_factory=dict)    # article url -> image url
+    default_date: str = ""
+
+    def card(self, text: str, headline: str = "") -> dict:
+        ids = [int(x) for x in CITE_RE.findall(text or "")]
+        first = self.meta.get(ids[0], {}) if ids else {}
+        url = self.linker.for_text(text)
+        sent = (first.get("sent") or self.default_date)[:10]
+        try:
+            day = date.fromisoformat(sent).strftime("%B %d, %Y").replace(" 0", " ")
+        except ValueError:
+            day = ""
+        return {"category": CATEGORY_LABEL.get(first.get("category") or "other", "Technology"),
+                "headline": headline, "text": plain(text), "url": url, "image": self.images.get(url, ""),
+                "date": day}
 
 
 def render_md(issue: dict, linker: Linker, title: str, date_label: str) -> str:
     def c(t: str) -> str:
         u = linker.for_text(t)
-        return plain(t) + (f" [Read more]({u})" if u else "")
+        return plain(t) + (f" [Read story]({u})" if u else "")
     out = [f"**{title}** — {date_label}", "", f"# {issue['subject']}", "", plain(issue["hook"]), "",
            "## Today's big story", f"### {issue['top_story']['headline']}"]
     out += [c(p) + "\n" for p in issue["top_story"]["paragraphs"]]
     if issue["top_story"]["why_it_matters"]:
-        out.append(f"**Why it matters:** {c(issue['top_story']['why_it_matters'])}\n")
+        out.append(f"**Why it matters:** {plain(issue['top_story']['why_it_matters'])}\n")
     if issue["talking_about"]:
         out.append("## Everyone's talking about")
         out += [(f"**{x['headline']}** " if x["headline"] else "") + c(x["text"]) + "\n" for x in issue["talking_about"]]
     if issue["quick_hits"]:
         out.append("## Quick hits")
-        out += [f"- {c(x['text'])}" for x in issue["quick_hits"]] + [""]
+        out += [f"- " + (f"**{x['headline']}** " if x.get("headline") else "") + c(x["text"]) for x in issue["quick_hits"]]
+        out.append("")
     if issue["safe_to_skip"]:
         out.append("## Safe to skip")
-        out += [f"- {c(x['text'])}" for x in issue["safe_to_skip"]] + [""]
+        out += [f"- {plain(x['text'])}" for x in issue["safe_to_skip"]] + [""]
     out.append(issue["close"])
     return "\n".join(out).strip() + "\n"
 
 
-def render_html(issue: dict, linker: Linker, title: str, date_label: str, footer: str) -> str:
-    body = f"{FONT}margin:0 0 14px;font-size:16px;line-height:1.6;color:#2B3445;"
+def _e(t: str) -> str:
+    return htmlmod.escape(t or "", quote=True)
 
-    def section(heading: str, inner: str, bg: str = "#FFFFFF") -> str:
-        return (f'<tr><td class="px" style="padding:26px 36px 6px;background:{bg};{FONT}">'
-                f'<h3 style="margin:0 0 14px;padding-top:22px;border-top:1px solid #DDE3EA;font-size:18px;'
-                f'line-height:1.3;font-weight:800;letter-spacing:-0.01em;color:#0F1B2D;">{heading}</h3>{inner}</td></tr>')
 
+def _image(card: dict, radius: str, height: int) -> str:
+    """Article image, or a quiet colour tile with the category when the article has none."""
+    if card["image"]:
+        img = (f'<img src="{_e(card["image"])}" width="100%" alt="" style="display:block;width:100%;height:{height}px;'
+               f'object-fit:cover;border:0;border-radius:{radius};">')
+        return f'<a href="{_e(card["url"])}" style="text-decoration:none;">{img}</a>' if card["url"] else img
+    return (f'<div style="height:{height}px;border-radius:{radius};background-color:#211A3D;'
+            f'background-image:linear-gradient(135deg,#211A3D 0%,#4A2FA0 100%);"></div>')
+
+
+def _card_footer(card: dict) -> str:
+    link = (f'<a href="{_e(card["url"])}" style="color:{INK};text-decoration:none;font-weight:700;">Read story&nbsp;&#8599;</a>'
+            if card["url"] else "")
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">'
+            f'<tr><td style="{FONT}font-size:13px;color:{MUTED};">{_e(card["date"])}</td>'
+            f'<td align="right" style="{FONT}font-size:14px;">{link}</td></tr></table>')
+
+
+def _label(card: dict) -> str:
+    return (f'<div style="{FONT}font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;'
+            f'color:{ACCENT};margin:0 0 10px;">{_e(card["category"])}</div>')
+
+
+def _grid_card(card: dict) -> str:
+    head = (f'<div style="{FONT}font-size:19px;line-height:1.28;font-weight:700;letter-spacing:-0.01em;color:{INK};'
+            f'margin:0 0 10px;">{_e(card["headline"])}</div>') if card["headline"] else ""
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            f'style="background:#FFFFFF;border:1px solid {LINE};border-radius:18px;">'
+            f'<tr><td>{_image(card, "17px 17px 0 0", 150)}</td></tr>'
+            f'<tr><td style="padding:20px 20px 18px;">{_label(card)}{head}'
+            f'<div style="{FONT}font-size:15px;line-height:1.6;color:{MUTED};">{_e(card["text"])}</div>'
+            f'{_card_footer(card)}</td></tr></table>')
+
+
+def _grid(cards: list[dict]) -> str:
+    rows = []
+    for k in range(0, len(cards), 2):
+        pair = cards[k:k + 2]
+        cells = "".join(f'<td class="col" width="50%" valign="top" style="padding:8px;">{_grid_card(c)}</td>' for c in pair)
+        if len(pair) == 1:
+            cells += '<td class="col" width="50%" style="padding:8px;"></td>'
+        rows.append(f"<tr>{cells}</tr>")
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{"".join(rows)}</table>')
+
+
+def _section(heading: str, inner: str) -> str:
+    return (f'<tr><td class="px" style="padding:34px 16px 4px;">'
+            f'<div style="{FONT}font-size:22px;font-weight:800;letter-spacing:-0.02em;color:{INK};padding:0 8px 6px;">'
+            f'{_e(heading)}</div>{inner}</td></tr>')
+
+
+def render_html(issue: dict, ctx: RenderCtx, title: str, date_label: str, footer: str) -> str:
     top = issue["top_story"]
-    why = top["why_it_matters"]
-    why_block = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
-                 f'style="margin:6px 0 10px;"><tr><td style="border-left:3px solid #2747E8;padding:4px 0 4px 16px;'
-                 f'{FONT}font-size:16px;line-height:1.6;color:#0F1B2D;"><strong>Why it matters.</strong> '
-                 f'{htmlmod.escape(plain(why))}</td></tr></table>') if why else ""
-    talking = "".join(
-        f'<p style="{FONT}margin:0 0 4px;font-size:17px;font-weight:700;color:#0F1B2D;">{htmlmod.escape(x["headline"])}</p>'
-        + _p(x["text"], linker.for_text(x["text"]), body) for x in issue["talking_about"])
-
-    def bullets(xs, color="#2B3445", size="16px") -> str:
-        rows = "".join(
-            f'<tr><td valign="top" style="width:18px;padding:9px 0 0;"><span style="display:block;width:7px;height:7px;'
-            f'background:#2747E8;"></span></td><td style="{FONT}padding:0 0 12px;font-size:{size};line-height:1.6;'
-            f'color:{color};">{htmlmod.escape(plain(x["text"]))}'
-            + ((lambda u: f' <a href="{htmlmod.escape(u)}" style="color:#2747E8;text-decoration:none;font-weight:600;'
-                          f'white-space:nowrap;">Read more</a>' if u else "")(linker.for_text(x["text"])))
-            + '</td></tr>' for x in xs)
-        return f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{rows}</table>'
-
+    paras = top["paragraphs"]
+    lead = ctx.card(" ".join(paras), top["headline"])
+    body = "".join(f'<p style="{FONT}margin:0 0 14px;font-size:16px;line-height:1.65;color:#3A3946;">{_e(plain(p))}</p>'
+                   for p in paras)
+    why = (f'<div style="{FONT}margin:4px 0 0;padding:16px 18px;background:#F4F0FF;border-radius:14px;font-size:15px;'
+           f'line-height:1.6;color:{INK};"><strong style="color:{ACCENT};">Why it matters</strong><br>'
+           f'{_e(plain(top["why_it_matters"]))}</div>') if top["why_it_matters"] else ""
+    featured = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+                f'style="background:#FFFFFF;border:1px solid #D9CCF7;border-radius:20px;">'
+                f'<tr><td>{_image(lead, "19px 19px 0 0", 280)}</td></tr>'
+                f'<tr><td style="padding:28px 28px 24px;">{_label(lead)}'
+                f'<h2 class="h2" style="{FONT}margin:0 0 16px;font-size:28px;line-height:1.2;font-weight:800;'
+                f'letter-spacing:-0.02em;color:{ACCENT};">{_e(top["headline"])}</h2>{body}{why}{_card_footer(lead)}'
+                f'</td></tr></table>')
+    talking = [ctx.card(x["text"], x["headline"]) for x in issue["talking_about"]]
+    quick = [ctx.card(x["text"], x.get("headline", "")) for x in issue["quick_hits"]]
+    skip = ""
+    if issue["safe_to_skip"]:
+        items = "".join(f'<tr><td style="{FONT}padding:10px 0;border-top:1px solid {LINE};font-size:15px;line-height:1.55;'
+                        f'color:{MUTED};">{_e(plain(x["text"]))}</td></tr>' for x in issue["safe_to_skip"])
+        skip = _section("Safe to skip", f'<div style="padding:0 8px;"><table role="presentation" width="100%" '
+                                        f'cellpadding="0" cellspacing="0" border="0">{items}</table></div>')
     tpl = Template(resources.files("nlagg").joinpath("templates/issue.html").read_text(encoding="utf-8"))
     return tpl.substitute(
-        subject=htmlmod.escape(issue["subject"]), preheader=htmlmod.escape(plain(issue["hook"]))[:180],
-        wordmark=htmlmod.escape(title), date_label=htmlmod.escape(date_label),
-        hook=htmlmod.escape(plain(issue["hook"])), top_headline=htmlmod.escape(top["headline"]),
-        top_paragraphs="".join(_p(p, linker.for_text(p), body) for p in top["paragraphs"]),
-        why_block=why_block,
-        talking_block=section("Everyone's talking about", talking) if talking else "",
-        quick_block=section("Quick hits", bullets(issue["quick_hits"])) if issue["quick_hits"] else "",
-        skip_block=section("Safe to skip", bullets(issue["safe_to_skip"], "#667085", "15px"))
-        if issue["safe_to_skip"] else "",
-        close=htmlmod.escape(issue["close"]), footer=htmlmod.escape(footer))
+        subject=_e(issue["subject"]), preheader=_e(plain(issue["hook"]))[:180], wordmark=_e(title),
+        date_label=_e(date_label), hook=_e(plain(issue["hook"])), featured=featured,
+        talking_block=_section("Everyone's talking about", _grid(talking)) if talking else "",
+        quick_block=_section("Quick hits", _grid(quick)) if quick else "",
+        skip_block=skip, close=_e(issue["close"]), footer=_e(footer))
 
 
 # ---------------------------------------------------------------- orchestration
 def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | None = None, client=None,
-                resolve_links: bool = True, fetch=None, force: bool = False) -> ComposeResult:
+                resolve_links: bool = True, fetch=None, fetch_html=None, force: bool = False) -> ComposeResult:
     segment = segment or (cfg.active_segments[0] if cfg.active_segments else "1-TechAI")
     issue_date = issue_date or datetime.now(timezone.utc).date().isoformat()
     comp = cfg.raw.get("compose", {})
@@ -476,6 +548,14 @@ def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | No
                 f"SELECT id, url FROM items WHERE id IN ({','.join('?' * len(cited))})", cited)}
         urls = {i: u for i, u in urls.items() if u and not is_newsletter_url(u)}
     linker_md, linker_html = Linker(urls, links_mode), Linker(urls, links_mode)
+    images: dict[str, str] = {}
+    if links_mode == "original" and str(comp.get("images", "article")).lower() == "article" and urls and resolve_links:
+        from .links import page_images
+        images = page_images(conn, list(urls.values()), **({"fetch_html": fetch_html} if fetch_html else {}))
+    meta = {r["id"]: {"category": r["category"], "sent": r["sent_date"]} for r in conn.execute(
+        f"""SELECT i.id, i.sent_date, e.category FROM items i LEFT JOIN item_enrichment e ON e.item_id = i.id
+            WHERE i.id IN ({','.join('?' * len(cited)) or 'NULL'})""", cited)}
+    ctx = RenderCtx(linker_html, meta, images, issue_date)
     footer = comp.get("footer", {}).get(segment) if isinstance(comp.get("footer"), dict) else comp.get("footer")
     footer = footer or f"{title} is a daily briefing on {label}. Reply to this email to send feedback or to unsubscribe."
     date_label = date.fromisoformat(issue_date).strftime("%A, %d %B %Y").replace(" 0", " ")
@@ -483,7 +563,7 @@ def run_compose(cfg: Config, *, segment: str | None = None, issue_date: str | No
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path, html_path = out_dir / f"{issue_date}.md", out_dir / f"{issue_date}.html"
     md_path.write_text(render_md(issue, linker_md, title, date_label), encoding="utf-8")
-    html_path.write_text(render_html(issue, linker_html, title, date_label, footer), encoding="utf-8")
+    html_path.write_text(render_html(issue, ctx, title, date_label, footer), encoding="utf-8")
     report = {"problems_dropped": problems, "retried": res.retried, "cited_items": cited,
               "roles": {s.id: s.role for s in picked}, "subject": issue["subject"]}
     with conn:

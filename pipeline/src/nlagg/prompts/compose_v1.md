@@ -26,7 +26,7 @@ Write these parts:
                "why_it_matters": 1 sentence with ids}
 - "talking_about": for each story marked TALKED_ABOUT: {"headline": max 10 words, "text": 2-3 sentences with ids,
                    include any disagreement between the notes}
-- "quick_hits": for each story marked QUICK_HIT: {"text": exactly 1 sentence with ids}
+- "quick_hits": for each story marked QUICK_HIT: {"headline": max 9 words, no ids; "text": 1-2 sentences with ids}
 - "safe_to_skip": for each story marked SKIP (if any): {"text": 1 sentence: what it is and why most readers can skip it, with ids}
 - "close": one friendly sign-off line, no facts, no ids.
 
@@ -40,6 +40,6 @@ Example of the tone (invented stories, invented ids):
                   "One explanation is a wave of cancelled data-center orders [i1]. Another points to a new factory in Taiwan coming online [i2]."],
    "why_it_matters": "Cheaper memory usually feeds through to cheaper laptops by spring [i1]."},
  "talking_about": [{"headline": "A robot that folds laundry", "text": "A demo of a laundry-folding robot was everywhere today [i3][i4][i5]. It took 4 minutes per shirt [i4]."}],
- "quick_hits": [{"text": "A browser maker added an AI sidebar that summarises open tabs [i6]."}],
+ "quick_hits": [{"headline": "Your browser now summarises your tabs", "text": "A browser maker added an AI sidebar that summarises open tabs [i6]."}],
  "safe_to_skip": [{"text": "A celebrity's AI art drop got attention, but there is nothing new in it for builders [i7]."}],
  "close": "That's it for today. See you tomorrow."}

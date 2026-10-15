@@ -4,7 +4,7 @@
 --             split_status, capture_backend
 --   items / stories / story_items / issues_out  (story-level analysis + our generated issues)
 -- v3 (M2): messages.is_promo/split_shape/split_error, items.kind/word_count.
--- v5 (M3-M5): llm_cache, link_resolution, stories.score/window_end.
+-- v5 (M3-M5): llm_cache, link_resolution, stories.score/window_end. v6: link_meta (card images).
 -- Applied idempotently; PRAGMA user_version tracks the schema version; db.py adds
 -- missing columns to databases created by an older version.
 
@@ -142,6 +142,12 @@ CREATE TABLE IF NOT EXISTS link_resolution (
   final_url   TEXT,                    -- destination after redirects (NULL = could not resolve)
   status      TEXT,                    -- ok | failed
   resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS link_meta (
+  url         TEXT PRIMARY KEY,        -- an ORIGINAL article URL (never a newsletter page)
+  image_url   TEXT,                    -- its og:image / twitter:image, for the story card (NULL = none)
+  fetched_at  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_msg_segment ON messages(segment);

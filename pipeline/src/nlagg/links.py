@@ -6,7 +6,9 @@ make it into our issue (every request counts as a click for the sender). Redirec
 """
 from __future__ import annotations
 
+import html as htmlmod
 import logging
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -78,4 +80,56 @@ def resolve_for_items(conn, item_ids: list[int], fetch=_default_fetch) -> dict[i
         else:
             final = hit["final_url"]
         out[r["id"]] = final or url
+    return out
+
+
+# ---------------------------------------------------------------- card images
+_META_RE = re.compile(r"<meta\b[^>]*>", re.I)
+_ATTR_RE = re.compile(r"""(\w[\w:-]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""")
+
+
+def find_page_image(html: str, base_url: str) -> str | None:
+    """og:image (or twitter:image) of an article page, as an absolute https URL."""
+    best = None
+    for tag in _META_RE.findall(html or ""):
+        attrs = {k.lower(): v.strip("\"'") for k, v in _ATTR_RE.findall(tag)}
+        key = (attrs.get("property") or attrs.get("name") or "").lower()
+        if key in ("og:image", "og:image:secure_url", "og:image:url") and attrs.get("content"):
+            best = attrs["content"]
+            break
+        if key in ("twitter:image", "twitter:image:src") and attrs.get("content") and not best:
+            best = attrs["content"]
+    if not best:
+        return None
+    url = urllib.parse.urljoin(base_url, htmlmod.unescape(best))
+    return url if url.startswith("https://") else None
+
+
+def _default_fetch_html(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; nlagg preview)",
+                                               "Accept": "text/html"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        if "html" not in (r.headers.get("Content-Type") or "html"):
+            return ""
+        return r.read(400_000).decode("utf-8", "replace")
+
+
+def page_images(conn, urls: list[str], fetch_html=_default_fetch_html) -> dict[str, str]:
+    """{article url: image url} — fetched once per URL and cached in link_meta."""
+    out: dict[str, str] = {}
+    for url in dict.fromkeys(u for u in urls if u):
+        row = conn.execute("SELECT image_url FROM link_meta WHERE url = ?", (url,)).fetchone()
+        if row is None:
+            try:
+                img = find_page_image(fetch_html(url), url)
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+                log.info("page image %s failed: %s", url, e)
+                img = None
+            with conn:
+                conn.execute("INSERT OR REPLACE INTO link_meta (url, image_url, fetched_at) VALUES (?,?,?)",
+                             (url, img, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+        else:
+            img = row[0]
+        if img:
+            out[url] = img
     return out

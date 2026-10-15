@@ -57,7 +57,7 @@ def test_approve_sends_html_email_bcc(draft):
     m = FakeSMTP.sent[0]
     assert m["Subject"] == "Meta puts Muse on your face" and m["Bcc"] == "a@example.com, b@example.com"
     assert m.get_body(("html",)).get_content().lstrip().startswith("<!doctype html>")
-    assert "Read more <https://news.example/0>" in m.get_body(("plain",)).get_content()
+    assert "Read story <https://news.example/0>" in m.get_body(("plain",)).get_content()
     assert approve(draft, smtp_factory=FakeSMTP).status == "missing"                        # no draft left
     assert approve(draft, issue_date="2026-10-02", smtp_factory=FakeSMTP).status == "sent"
     assert len(FakeSMTP.sent) == 1                                                         # never sent twice

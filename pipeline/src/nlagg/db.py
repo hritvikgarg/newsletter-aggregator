@@ -5,7 +5,7 @@ import sqlite3
 from importlib import resources
 from pathlib import Path
 
-SCHEMA_VERSION = 5   # v1 original, v2 items/stories/issues_out, v3 M2 columns, v4 duplicate_of, v5 M3-M5
+SCHEMA_VERSION = 6   # v1 original, v2 items/stories/issues_out, v3 M2 columns, v4 duplicate_of, v5 M3-M5, v6 link_meta
 
 # Columns added after a table was first created: (table, column, type/default).
 # CREATE TABLE IF NOT EXISTS does not touch existing tables, so older DBs get them via ALTER.

@@ -66,9 +66,9 @@ def test_compose_validates_retries_and_writes(cfg, tmp_path, monkeypatch):
     assert "Apple" in reasons and "no citation" in reasons and "unknown item" in reasons
     md = r.md_path.read_text(encoding="utf-8")
     assert "Apple" not in md and "Gemini 5" not in md and "$1,299" in md
-    assert "[Read more](https://news.example/0)" in md and "[i" not in md
+    assert "[Read story](https://news.example/0)" in md and "[i" not in md
     html = r.html_path.read_text(encoding="utf-8")
-    assert "Read more</a>" in html and "Meta puts Muse on your face" in html
+    assert "Read story" in html and "Meta puts Muse on your face" in html
     for name in ("TLDR", "Superhuman", "The Neuron", "newsletter", "[i"):        # reads as our own publication
         assert name not in html.split("<body")[1] and name not in md
     conn = db.connect(cfg.db_path)
@@ -141,3 +141,35 @@ def test_links_go_to_original_articles_only():
     lk = Linker({1: "https://apnews.com/a", 2: "https://apnews.com/a", 3: ""})
     assert lk.for_text("x [i1]") == "https://apnews.com/a" and lk.for_text("y [i2]") == ""   # same link once
     assert Linker({1: "https://apnews.com/a"}, "none").for_text("x [i1]") == ""
+
+
+def test_page_image_found_and_cached(cfg):
+    from nlagg.links import find_page_image, page_images
+    html = '<html><head><meta property="og:image" content="/img/hero.jpg?w=1200&amp;h=630"></head></html>'
+    assert find_page_image(html, "https://apnews.com/article/x") == "https://apnews.com/img/hero.jpg?w=1200&h=630"
+    assert find_page_image('<meta name="twitter:image" content="https://cdn.x.com/a.png">', "https://x.com") == "https://cdn.x.com/a.png"
+    assert find_page_image("<p>no meta</p>", "https://x.com") is None
+    conn = db.connect(cfg.db_path)
+    calls = []
+    fetch = lambda u: (calls.append(u), html)[1]                                    # noqa: E731
+    assert page_images(conn, ["https://apnews.com/article/x"], fetch) == {
+        "https://apnews.com/article/x": "https://apnews.com/img/hero.jpg?w=1200&h=630"}
+    page_images(conn, ["https://apnews.com/article/x"], fetch)
+    assert len(calls) == 1
+    conn.close()
+
+
+def test_cards_render_images_headlines_and_fallback(cfg, tmp_path, monkeypatch):
+    ids = prepare(cfg)
+    monkeypatch.setattr(cfg, "repo_root", tmp_path)
+    reply = compose_reply(ids, bad=False)
+    reply["quick_hits"][0]["headline"] = "RSA keys break faster"
+    r = run_compose(cfg, issue_date="2026-10-02", client=FakeChat(lambda m, x: reply), resolve_links=True,
+                    fetch=lambda u, m: (200, None),
+                    fetch_html=lambda u: '<meta property="og:image" content="https://img.example/meta.jpg">'
+                    if u.endswith("/0") else "")
+    html = r.html_path.read_text(encoding="utf-8")
+    assert 'src="https://img.example/meta.jpg"' in html                     # featured card image
+    assert "linear-gradient" in html                                         # card without an image
+    assert "RSA keys break faster" in html and "Read story" in html and "Launch" in html
+    assert "October 1, 2026" in html
